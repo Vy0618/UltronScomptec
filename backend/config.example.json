@@ -1,0 +1,12 @@
+{
+  "DATABASE_URL": "mysql+pymysql://root:@127.0.0.1:3306/cnc_monitor?charset=utf8mb4",
+  "SQL_ECHO": false,
+  "CORS_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
+  "AUTH_SECRET": "troque-esta-chave-em-producao",
+  "AUTH_TOKEN_TTL_MINUTES": 480,
+  "ADMIN_NAME": "Administrador",
+  "ADMIN_EMAIL": "",
+  "ADMIN_PASSWORD": "",
+  "DEVICE_OFFLINE_TIMEOUT_SECONDS": 90,
+  "DEVICE_API_KEY": ""
+}

@@ -1,0 +1,48 @@
+# Configuração local e credenciais
+.env
+.env.*
+!.env.example
+backend/config.json
+optaSecrets.h
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Node, Vite e Electron
+node_modules/
+dist/
+frontend/release/
+.vite/
+
+# Artefatos e dados locais
+.build/
+.cache/
+.local/
+.tools/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-shm
+*.sqlite3-wal
+*.log
+docs/.documento_qa/
+
+# Editor e sistema operacional
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
