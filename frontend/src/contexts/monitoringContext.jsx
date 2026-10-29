@@ -69,8 +69,6 @@ const initialMachines = mockMachines.map((machine, index) => ({
     ciclo: machine.status === MACHINE_STATUS.OPERANDO,
     manutencao: machine.status === MACHINE_STATUS.MANUTENCAO,
   },
-  firmwareVersion: "v1.4.2",
-  uptimeSeconds: 172800 + index * 3600,
   isNew: false,
   telemetryBuffer: generateInitialTelemetryBuffer(machine),
   currentTrend: index % 3 === 0 ? "UP" : index % 2 === 0 ? "STABLE" : "DOWN",

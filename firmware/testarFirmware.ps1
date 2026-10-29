@@ -34,7 +34,7 @@ try {
     Run-Checked $ZigPath @('c++','-std=c++17','-Wall','-Wextra','-Werror','-Ifirmware/tests/host','firmware/tests/host/testControl.cpp','-o',"$outputDir\test_control.exe") "$outputDir\compile-control.log"
     Run-Checked "$outputDir\test_control.exe" @() "$outputDir\test-control.log"
     Run-Checked $ZigPath @('c++','-std=c++17','-Wall','-Wextra','-Werror',"-I$jsonInclude",'firmware/tests/host/testtelemetry.cpp','-o',"$outputDir\test_telemetry.exe") "$outputDir\compile-telemetry.log"
-    Run-Checked "$outputDir\test_telemetry.exe" @("$outputDir\telemetry-fixtures.json", "$outputDir\usb-fixture.txt") "$outputDir\test-telemetry.log"
+    Run-Checked "$outputDir\test_telemetry.exe" @("$outputDir\telemetry-fixtures.json", "$outputDir\usb-fixture.txt", "$outputDir\monitor-usb-fixture.txt") "$outputDir\test-telemetry.log"
 
     if (-not $HostOnly) {
         if (-not (Test-Path -LiteralPath $CliPath)) { throw 'Arduino CLI ausente. Instale Arduino IDE 2/CLI ou informe -CliPath.' }
@@ -52,7 +52,7 @@ try {
         if (-not $mappedDrive) { throw 'Nenhuma letra U: a Z: disponivel para o caminho curto temporario do GCC.' }
         $shortConfig = "directories:`n  data: $mappedDrive/.tools/arduino-data`n  downloads: $mappedDrive/.tools/arduino-downloads`n  user: $mappedDrive/.tools/arduino-user`n"
         Set-Content -LiteralPath '.tools\arduino-cli-short.yaml' -Value $shortConfig -Encoding ascii
-        Run-Checked $CliPath @('compile','--fqbn','arduino:mbed_opta:opta','--config-file',"$mappedDrive\.tools\arduino-cli-short.yaml",'--build-path',"$mappedDrive\.build\firmware\opta-short","$mappedDrive\firmware\optaMesaMonitor") "$outputDir\compile-opta.log"
+        Run-Checked $CliPath @('compile','--fqbn','arduino:mbed_opta:opta','--config-file',"$mappedDrive\.tools\arduino-cli-short.yaml",'--build-path',"$mappedDrive\.build\firmware\opta-short","$mappedDrive\firmware\optaCncMonitor") "$outputDir\compile-opta.log"
     }
     Write-Output 'Firmware: verificacoes concluidas. Nenhum upload ou acesso ao hardware foi executado.'
 }

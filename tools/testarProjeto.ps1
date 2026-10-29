@@ -71,7 +71,7 @@ function Invoke-Check([string]$Name, [string]$Executable, [string[]]$Arguments, 
 $python = Join-Path $projectRoot '.venv\Scripts\python.exe'
 $node = Find-Node
 $npm = Find-Npm $node
-$envNames = @('DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'DEVICE_API_KEY', 'PYTHONDONTWRITEBYTECODE', 'VITE_USE_MOCKS', 'ULTRON_SIMULATION')
+$envNames = @('DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'DEVICE_API_KEY', 'PYTHONDONTWRITEBYTECODE', 'VITE_USE_MOCKS', 'ULTRON_SIMULATION', 'INGEST_API_KEY', 'EVENT_OFFLINE_TIMEOUT_SECONDS')
 $previousEnvironment = @{}
 foreach ($name in $envNames) { $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 
@@ -82,6 +82,8 @@ try {
     $env:ADMIN_EMAIL = ''
     $env:ADMIN_PASSWORD = ''
     $env:DEVICE_API_KEY = ''
+    $env:INGEST_API_KEY = ''
+    $env:EVENT_OFFLINE_TIMEOUT_SECONDS = ''
     $env:PYTHONDONTWRITEBYTECODE = '1'
     $env:VITE_USE_MOCKS = 'false'
     if ($Firmware) {

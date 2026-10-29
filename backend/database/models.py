@@ -22,7 +22,7 @@ class Base(DeclarativeBase):
 
 
 class CodeSequence(Base):
-    """Persistent counters used for human-readable CNC and Arduino Opta WiFi codes."""
+    """Persistent counters used for human-readable entity codes."""
     __tablename__ = "code_sequences"
 
     prefix: Mapped[str] = mapped_column(String(20), primary_key=True)
@@ -125,6 +125,10 @@ class CNC(Base):
         DateTime,
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
+    )
+
+    events: Mapped[list["MachineEvent"]] = relationship(
+        "MachineEvent", cascade="all, delete-orphan",
     )
 
     devices: Mapped[list["Device"]] = relationship(
@@ -298,3 +302,32 @@ class TelemetryOrder(Base):
     telemetry_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("telemetry.id", ondelete="CASCADE"), unique=True,
     )
+
+
+class MachineEvent(Base):
+    """Machine-owned observations; no dependency on a collector's lifecycle.
+
+    This new table can be created in existing installations without changing
+    legacy telemetry columns. Hardware metadata is optional adapter information.
+    """
+    __tablename__ = "machine_events"
+
+    sequence: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # Retain ordering of imported history without making an old observation new.
+    generation: Mapped[int] = mapped_column(nullable=False, default=1)
+    legacy_order: Mapped[int | None] = mapped_column(nullable=True)
+    id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, default=lambda: str(uuid4()))
+    machine_id: Mapped[str] = mapped_column(String(36), ForeignKey("cncs.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Optional provenance, deliberately not a foreign key to devices.
+    device_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    machine_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    voltage_24v: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    digital_signals: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    analog_signals: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    extra_signals: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    @property
+    def states(self):
+        return self.digital_signals

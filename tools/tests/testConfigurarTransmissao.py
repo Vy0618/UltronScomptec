@@ -12,6 +12,11 @@ selector = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(selector)
 
 
+@pytest.fixture(autouse=True)
+def isolated_build_output(monkeypatch, tmp_path):
+    monkeypatch.setattr(selector, 'ROOT', tmp_path)
+
+
 @pytest.mark.parametrize(('transport', 'flag', 'directory'), [
     ('usb', '1', 'opta-usb'), ('http', '0', 'opta-wifi'),
 ])
@@ -79,7 +84,7 @@ def test_terminal_selection_overrides_opposite_local_setting(tmp_path, usb):
     compiler = shutil.which('g++')
     if compiler is None:
         pytest.skip('Verificação do config.h exige g++')
-    source = selector.ROOT / 'firmware/optaMesaMonitor/config.h'
+    source = SCRIPT.parents[1] / 'firmware/optaCncMonitor/config.h'
     (tmp_path / 'config.h').write_text(source.read_text())
     (tmp_path / 'Arduino.h').write_text('#include <cstdint>\n#include <cstddef>\n')
     (tmp_path / 'optaSecrets.h').write_text(f'#define ULTRON_TELEMETRY_USB {1 - usb}\n')
@@ -87,3 +92,24 @@ def test_terminal_selection_overrides_opposite_local_setting(tmp_path, usb):
     unit.write_text(f'#include "config.h"\nstatic_assert(ULTRON_TELEMETRY_USB == {usb}, "transporte errado");\n')
     subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-fsyntax-only',
                     f'-DULTRON_TELEMETRY_USB_OVERRIDE={usb}', '-I', str(tmp_path), str(unit)], check=True)
+
+
+def test_old_sketch_artifacts_are_removed_before_compile_and_upload(monkeypatch):
+    output = selector.ROOT / '.build/firmware/opta-usb'
+    output.mkdir(parents=True)
+    (output / 'oldSketch.ino.bin').write_bytes(b'old')
+    other = selector.ROOT / '.build/firmware/opta-wifi'
+    other.mkdir()
+    (other / 'keep.ino.bin').write_bytes(b'other transport')
+    stages = []
+    def run(command, **kwargs):
+        stages.append(command[1])
+        if command[1] == 'compile':
+            assert list(output.iterdir()) == []
+            (output / 'optaCncMonitor.ino.bin').write_bytes(b'new')
+        else:
+            assert [path.name for path in output.glob('*.bin')] == ['optaCncMonitor.ino.bin']
+    monkeypatch.setattr(selector.subprocess, 'run', run)
+    assert selector.main(['--transporte', 'usb', '--porta', '/dev/ttyACM0']) == 0
+    assert stages == ['compile', 'upload']
+    assert (other / 'keep.ino.bin').read_bytes() == b'other transport'

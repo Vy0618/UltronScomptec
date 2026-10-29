@@ -37,7 +37,9 @@ class CNCStatusResponse(UTCModel):
     status_since: Optional[datetime] = None
     status_duration_seconds: int
     last_seen: Optional[datetime] = None
-    gateway_online: bool
+    online: bool
+    states: Dict[str, bool] = Field(default_factory=dict)
+    gateway_online: bool  # Compatibility alias; presence is machine-based.
     last_known_status: str = "SEM_COMUNICACAO"
     telemetry_timestamp: Optional[datetime] = None
     telemetry_received_at: Optional[datetime] = None

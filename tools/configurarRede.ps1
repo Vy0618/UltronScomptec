@@ -25,7 +25,7 @@ if (-not [System.Net.IPAddress]::TryParse($BackendHost, [ref]$address) -or
 if ($DeviceKey -match '[^\x20-\x7E]' -or $DeviceKey.Contains('"') -or $DeviceKey.Contains('\')) {
     throw 'A chave deve usar ASCII imprimivel sem aspas ou barra invertida.'
 }
-$header = Join-Path $projectRoot 'firmware\optaMesaMonitor\optaSecrets.h'
+$header = Join-Path $projectRoot 'firmware\optaCncMonitor\optaSecrets.h'
 @"
 #pragma once
 // Gerado localmente. Notebook e Opta devem estar no hotspot maker.

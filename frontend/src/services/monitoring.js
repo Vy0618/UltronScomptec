@@ -37,6 +37,6 @@ export function monitoringTransitions(previous, machines) {
 }
 
 export function monitoringWarning(machines) {
-  const failures = machines.filter(machine => machine.statusError || machine.historyError || machine.utilizationError || machine.metadataError);
+  const failures = machines.filter(machine => machine.statusError || machine.historyError || machine.utilizationError);
   return failures.length ? `Atualização parcial: ${failures.length} máquina(s) com consulta indisponível. Os estados disponíveis continuam sendo atualizados.` : null;
 }

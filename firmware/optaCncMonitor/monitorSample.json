@@ -1,0 +1,42 @@
+{
+  "machine_active": true,
+  "voltage_24v": null,
+  "digital_signals": {
+    "em_execucao": true,
+    "pausa": false,
+    "parada": false,
+    "emergencia": false,
+    "motor_ligado": true,
+    "automatico": true,
+    "manual": false,
+    "alarme": false
+  },
+  "analog_signals": {},
+  "extra_signals": {
+    "profile": "boolean_monitor_v1",
+    "uptime_seconds": 1,
+    "capturado_millis": 1000,
+    "entradas_brutas": {
+      "I1": true,
+      "I2": false,
+      "I3": false,
+      "I4": false,
+      "I5": true,
+      "I6": true,
+      "I7": false,
+      "I8": false
+    },
+    "transport": "usb_serial",
+    "amostras_descartadas": 0,
+    "clp_inputs": {
+      "D000": true,
+      "D001": false,
+      "D002": false,
+      "D003": false,
+      "D004": true,
+      "D005": true,
+      "D006": false,
+      "D007": false
+    }
+  }
+}

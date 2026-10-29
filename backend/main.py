@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database.connection import create_tables, get_db, SessionLocal
 from services.adminBootstrap import sync_admin
-from services import authService, cncService, deviceService, telemetry, adminService
+from services import authService, cncService, deviceService, telemetry, adminService, events
 
 app = FastAPI(title="SCOMPTEC - CNC Monitor", version="1.0.0")
 
@@ -33,6 +33,7 @@ def on_startup():
 app.include_router(cncService.router, prefix="/api")
 app.include_router(deviceService.router, prefix="/api")
 app.include_router(telemetry.router, prefix="/api")
+app.include_router(events.router, prefix="/api")
 app.include_router(authService.router, prefix="/api")
 app.include_router(adminService.router, prefix="/api")
 

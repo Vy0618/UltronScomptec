@@ -12,6 +12,7 @@
 #define A4 4
 #define A5 5
 #define A6 6
+#define A7 7
 #define D0 10
 #define D1 11
 #define D2 12
@@ -20,10 +21,12 @@
 #define LED_D2 22
 extern uint32_t hostMillis;
 extern int hostPins[32];
+extern int hostModes[32];
+extern unsigned hostWrites;
 inline unsigned long millis() { return hostMillis; }
 inline int digitalRead(uint8_t pin) { return hostPins[pin]; }
-inline void digitalWrite(uint8_t pin, int state) { hostPins[pin] = state; }
-inline void pinMode(uint8_t, int) {}
+inline void digitalWrite(uint8_t pin, int state) { ++hostWrites; hostPins[pin] = state; }
+inline void pinMode(uint8_t pin, int mode) { hostModes[pin] = mode; }
 inline void delay(uint32_t ms) { hostMillis += ms; }
 struct HostSerial {
   void begin(int) {}

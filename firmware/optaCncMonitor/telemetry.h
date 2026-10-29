@@ -2,4 +2,4 @@
 #include "telemetryModel.h"
 
 void telemetryBegin();
-void telemetryPublish(const MesaSnapshot& snapshot);
+void telemetryPublish(const CncSnapshot& snapshot);

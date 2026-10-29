@@ -23,12 +23,12 @@ if (-not $registration.device.id -or -not $registration.cnc.id -or -not $registr
     throw 'Resposta de cadastro incompleta; confira a versao do backend.'
 }
 
-$samplePath = Join-Path $PSScriptRoot '../firmware/optaMesaMonitor/mesaSample.json'
+$samplePath = Join-Path $PSScriptRoot '../firmware/optaCncMonitor/monitorSample.json'
 $sample = Get-Content -LiteralPath $samplePath -Raw -Encoding UTF8 | ConvertFrom-Json
 # Evita usar a data historica fixa do exemplo. O servidor atribui o horario atual.
 $sample.PSObject.Properties.Remove('timestamp')
-$sample.event_id = $registration.telemetry_session_id + ':1'
-$sample.extra_signals.boot_id = $registration.telemetry_session_id
+$sample | Add-Member -NotePropertyName event_id -NotePropertyValue ($registration.telemetry_session_id + ':1') -Force
+$sample.extra_signals | Add-Member -NotePropertyName boot_id -NotePropertyValue $registration.telemetry_session_id -Force
 $body = $sample | ConvertTo-Json -Depth 12 -Compress
 $url = "$base/devices/$($registration.device.id)/telemetry"
 $first = Invoke-RestMethod -Method Post -Uri $url -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 15

@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { readingStatus, readingEvent, markStale, startPolling, buildTelemetryBuffer } from "./telemetry.js";
 import { readFileSync } from "node:fs";
 
-test("chart displays real mesa digital readings without inventing analog measurements", () => {
-  const sample = JSON.parse(readFileSync(new URL("../../../firmware/optaMesaMonitor/mesaSample.json", import.meta.url), "utf8"));
+test("chart displays real CNC digital readings without inventing analog measurements", () => {
+  const sample = { ...JSON.parse(readFileSync(new URL("../../../firmware/optaCncMonitor/monitorSample.json", import.meta.url), "utf8")), timestamp: "2026-10-21T12:00:00Z" };
   const [point] = buildTelemetryBuffer([sample]);
   assert.equal(point.current, null);
   assert.equal(point.machineActive, 1);
   assert.equal(point.digital.alarme, 0);
-  assert.equal(point.digital.altura_pequena_bloqueada, 1);
+  assert.equal(point.digital.motor_ligado, 1);
   assert.equal(point.timestamp, Date.parse(sample.timestamp));
 });
 
@@ -29,13 +29,13 @@ test("chart orders, deduplicates and bounds readings, preserving zero and missin
   assert.equal(readings.length, 105);
 });
 
-test("mesa sample does not invent power-off when 24 V is unmeasured", () => {
-  const sample = JSON.parse(readFileSync(new URL("../../../firmware/optaMesaMonitor/mesaSample.json", import.meta.url), "utf8"));
+test("CNC sample does not invent power-off when 24 V is unmeasured", () => {
+  const sample = { ...JSON.parse(readFileSync(new URL("../../../firmware/optaCncMonitor/monitorSample.json", import.meta.url), "utf8")), timestamp: "2026-10-21T12:00:00Z" };
   assert.equal(readingStatus(sample), "OPERANDO");
   assert.equal(readingStatus({...sample, machine_active: false, digital_signals: {alarme: true}}), "ALARME");
   assert.equal(readingStatus({machine_active: false}), "PARADA");
-  assert.equal(sample.extra_signals.mesa.entradas_brutas.I3, false);
-  assert.equal(sample.digital_signals.altura_pequena_bloqueada, true);
+  assert.equal(sample.extra_signals.entradas_brutas.I3, false);
+  assert.equal(sample.digital_signals.motor_ligado, true);
 });
 
 test("Op­ta status priority matches backend", () => {

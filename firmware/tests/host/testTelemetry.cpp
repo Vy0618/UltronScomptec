@@ -2,17 +2,17 @@
 #include <cstdio>
 #include <fstream>
 #include <string>
-#include "../../optaMesaMonitor/telemetryCore.h"
-#include "../../optaMesaMonitor/telemetryPayload.h"
-#include "../../optaMesaMonitor/httpResponse.h"
+#include "../../optaCncMonitor/telemetryCore.h"
+#include "../../optaCncMonitor/telemetryPayload.h"
+#include "../../optaCncMonitor/httpResponse.h"
 
 const char* DEVICE = "11111111-1111-4111-8111-111111111111";
 const char* BOOT = "22222222-2222-4222-8222-222222222222";
 const char* OTHER = "33333333-3333-4333-8333-333333333333";
 constexpr uint64_t UNIX_TIME = 1792584000ULL;
-MesaSnapshot sample(uint32_t ms, const char* state = "aguardando_peca", bool active = false) {
-  MesaSnapshot s; s.capturedMs = ms; s.uptimeMs = ms; s.rawInputs = 14;
-  s.state = state; s.cycleActive = active; s.commandedOutputs = 1; return s;
+CncSnapshot sample(uint32_t ms, uint8_t active = 0) {
+  CncSnapshot s; s.capturedMs = ms; s.uptimeMs = ms;
+  s.activeInputs = s.rawInputs = active; return s;
 }
 template<size_t N> void registerCore(ultron::TelemetryCore<N>& core, uint32_t now) {
   assert(core.registered(DEVICE, BOOT, UNIX_TIME, now, 0));
@@ -28,12 +28,53 @@ bool parseHttp(const std::string& bytes, ultron::HttpResponse& response, bool ho
   return ultron::readHttpResponse(client, [&]() { return now; }, [&]() { ++now; }, 100, response);
 }
 int main(int argc, char** argv) {
+  // Every input combination must retain eight independent booleans on USB.
+  const char* signalNames[] = {"em_execucao", "pausa", "parada", "emergencia",
+                               "motor_ligado", "automatico", "manual", "alarme"};
+  ultron::TelemetryCore<2> monitorCore(1000, 15000);
+  for (unsigned bits = 0; bits < 256; ++bits) {
+    CncSnapshot s;
+    s.activeInputs = s.rawInputs = uint8_t(bits);
+    s.capturedMs = bits; s.uptimeMs = bits;
+    assert(monitorCore.enqueue(s));
+    ultron::Reading reading;
+    assert(monitorCore.takeUsb(bits, reading));
+    char wire[ultron::PAYLOAD_BYTES];
+    assert(ultron::serializeUsbReading(reading, "opta-monitor-usb-2.0.0", 0, wire, sizeof(wire)));
+    JsonDocument json; assert(!deserializeJson(json, wire));
+    auto payload = json["payload"];
+    assert(json["machine_id"] == "1");
+    assert(payload["digital_signals"].size() == 8);
+    assert(payload["machine_active"].as<bool>() == bool(bits & 1));
+    assert(payload["voltage_24v"].isNull());
+    assert(payload["analog_signals"].size() == 0);
+    assert(payload["extra_signals"]["profile"] == "boolean_monitor_v1");
+    for (unsigned i = 0; i < 8; ++i) {
+      assert(payload["digital_signals"][signalNames[i]].is<bool>());
+      assert(payload["digital_signals"][signalNames[i]].as<bool>() == bool(bits & (1U << i)));
+      char pin[3] = {'I', char('1' + i), '\0'};
+      assert(payload["extra_signals"]["entradas_brutas"][pin].as<bool>() == bool(bits & (1U << i)));
+      char address[5] = {'D', '0', '0', char('0' + i), '\0'};
+      assert(payload["extra_signals"]["clp_inputs"][address].as<bool>() == bool(bits & (1U << i)));
+    }
+    if (bits == 255 && argc > 3) {
+      std::ofstream output(argv[3]); assert(output.good());
+      output << "CNC_JSON:" << wire << "\n";
+    }
+  }
+  CncSnapshot unchanged;
+  unchanged.activeInputs = unchanged.rawInputs = 255; unchanged.capturedMs = 500;
+  assert(!monitorCore.enqueue(unchanged));
+  unchanged.capturedMs = 1255;
+  assert(monitorCore.enqueue(unchanged));
+  puts("PASS boolean profile: all 256 combinations / changes on every input / heartbeat / USB contract");
+
   ultron::TelemetryCore<16> core(1000, 15000);
   assert(core.enqueue(sample(100)));
   assert(!core.enqueue(sample(200)));
-  assert(core.enqueue(sample(220, "coletando_altura", true)));
-  auto ramp = sample(240, "coletando_altura", true); ramp.ramp1Full = true;
-  assert(core.enqueue(ramp)); assert(core.queued() == 3);
+  assert(core.enqueue(sample(220, 1)));
+  auto alarm = sample(240, 128);
+  assert(core.enqueue(alarm)); assert(core.queued() == 3);
   registerCore(core, 1000);
   assert(core.prepare(1000));
   assert(ultron::serializePending(core.pending(), core.bootId(), core.dropped()));
@@ -97,19 +138,18 @@ int main(int argc, char** argv) {
   assert(!usb.takeUsb(0, usbReading));
   assert(usb.enqueue(sample(0)));
   assert(!usb.enqueue(sample(20)));
-  auto active = sample(30, "acionando_queda1", true);
-  active.rawInputs = 26; active.commandedOutputs = 3; active.total = 1;
+  auto active = sample(30, 0x31);
   assert(usb.enqueue(active));
   assert(usb.takeUsb(30, usbReading) && usbReading.sequence == 1);
   assert(usb.takeUsb(30, usbReading) && usbReading.sequence == 2);
   char usbBody[ultron::PAYLOAD_BYTES];
-  assert(ultron::serializeUsbReading(usbReading, "mesa-opta-usb-1.4.0", 3, usbBody, sizeof(usbBody)));
+  assert(ultron::serializeUsbReading(usbReading, "opta-monitor-usb-2.0.0", 3, usbBody, sizeof(usbBody)));
   JsonDocument usbJson; assert(!deserializeJson(usbJson, usbBody));
   assert(usbJson["protocol"] == 1 && usbJson["sequence"] == 2);
   assert(usbJson["payload"]["machine_active"] == true);
   assert(usbJson["payload"]["voltage_24v"].isNull());
   assert(usbJson["payload"]["analog_signals"].size() == 0);
-  assert(usbJson["payload"]["extra_signals"]["mesa"]["saidas_comandadas"]["O2"] == true);
+  assert(usbJson["payload"]["digital_signals"]["motor_ligado"] == true);
   assert(usbJson["payload"]["extra_signals"]["amostras_descartadas"] == 3);
   assert(usbJson["payload"]["timestamp"].isNull());
   char tooSmall[8];
@@ -126,13 +166,9 @@ int main(int argc, char** argv) {
   if (argc > 1) {
     std::ofstream output(argv[1]); assert(output.good()); output << "[";
     ultron::TelemetryCore<16> fixture(1000, 15000); registerCore(fixture, 0);
-    const char* states[] = {"aguardando_peca", "coletando_altura", "aguardando_metal", "acionando_queda1", "falha", "aguardando_peca"};
+    const uint8_t signals[] = {0x04, 0x31, 0x02, 0x08, 0x80, 0x40};
     for (unsigned i = 0; i < 6; ++i) {
-      auto s = sample(i * 1000, states[i], i > 0 && i < 4);
-      s.fault = i == 4; s.total = i ? 1 : 0; s.faults = i >= 4 ? 1 : 0;
-      s.rawInputs = i == 1 || i == 2 || i == 3 ? 26 : 14;
-      s.metal = i == 2 || i == 3; s.height = i == 3 ? "pequena" : "invalida";
-      s.commandedOutputs = i == 3 ? 3 : 1;
+      auto s = sample(i * 1000, signals[i]);
       assert(fixture.enqueue(s) && fixture.prepare(s.capturedMs));
       assert(ultron::serializePending(fixture.pending(), fixture.bootId(), fixture.dropped()));
       if (i) output << ",";

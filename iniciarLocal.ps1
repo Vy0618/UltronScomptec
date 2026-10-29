@@ -120,7 +120,7 @@ $apiUrl = "http://127.0.0.1:$PortaApi/api"
 if ($PortaApi -eq $PortaDashboard) { throw 'API e dashboard precisam de portas diferentes.' }
 if ($Acao -in @('todos', 'backend')) { Assert-PortFree $PortaApi }
 if ($Acao -in @('todos', 'frontend')) { Assert-PortFree $PortaDashboard }
-$environmentNames = @('NO_PROXY', 'VITE_API_BASE_URL', 'VITE_USE_MOCKS', 'PYTHONUNBUFFERED', 'DATABASE_URL', 'DEVICE_OFFLINE_TIMEOUT_SECONDS', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'DEVICE_API_KEY', 'ULTRON_SIMULATION')
+$environmentNames = @('NO_PROXY', 'VITE_API_BASE_URL', 'VITE_USE_MOCKS', 'PYTHONUNBUFFERED', 'DATABASE_URL', 'DEVICE_OFFLINE_TIMEOUT_SECONDS', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'DEVICE_API_KEY', 'INGEST_API_KEY', 'EVENT_OFFLINE_TIMEOUT_SECONDS', 'ULTRON_SIMULATION', 'CORS_ORIGINS')
 $previousEnvironment = @{}
 foreach ($name in $environmentNames) { $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 try {
@@ -128,15 +128,20 @@ $env:NO_PROXY = 'localhost,127.0.0.1'
 $env:VITE_API_BASE_URL = $apiUrl
 $env:VITE_USE_MOCKS = 'false'
 $env:PYTHONUNBUFFERED = '1'
+$localOrigins = @("http://127.0.0.1:$PortaDashboard", "http://localhost:$PortaDashboard")
+if ($env:CORS_ORIGINS) { $localOrigins += $env:CORS_ORIGINS.Split(',') }
+$env:CORS_ORIGINS = ($localOrigins | Select-Object -Unique) -join ','
 if ($Simular) {
     $env:ULTRON_SIMULATION = 'true'
     $dbFile = (Join-Path $localDir 'simulacao.db').Replace('\', '/')
     $env:DATABASE_URL = 'sqlite:///' + $dbFile
     $env:DEVICE_OFFLINE_TIMEOUT_SECONDS = '10'
+    $env:EVENT_OFFLINE_TIMEOUT_SECONDS = '10'
     # A simulacao nao herda conta administrativa ou chave de uma instalacao real.
     $env:ADMIN_EMAIL = ''
     $env:ADMIN_PASSWORD = ''
     $env:DEVICE_API_KEY = ''
+    $env:INGEST_API_KEY = ''
 }
 
 if ($Acao -in @('todos', 'backend')) {
@@ -148,11 +153,7 @@ if ($Acao -in @('todos', 'frontend')) {
     Wait-Http "http://127.0.0.1:$PortaDashboard"
 }
 if ($Simular -and $Acao -in @('todos', 'backend')) {
-    Start-LocalProcess 'simulador' $python @('tools/simuladorWifi.py', '--api', $apiUrl, '--apenas-stream', '--stream-seconds', '-1', '--mac', '02:55:4C:54:52:01')
-    Start-Sleep -Seconds 1
-    $simulation = @($script:entries | Where-Object { $_.name -eq 'simulador' })[0]
-    if (-not (Is-OwnedProcess $simulation)) { throw 'Simulador encerrou inesperadamente. Consulte .local/simulador.err.log.' }
-    Write-Output 'SIMULACAO: SQLite separado, timeout de 10 s e dispositivo virtual.'
+    Write-Output 'TESTE LOCAL: SQLite separado e timeout de 10 s. Cadastre uma maquina e envie eventos por curl ou pipeline; nenhum coletor e iniciado.'
 }
 Write-Output "Dashboard: http://127.0.0.1:$PortaDashboard/dashboard"
 Write-Output "API: $apiUrl/health"

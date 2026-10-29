@@ -20,18 +20,18 @@ export function buildTelemetryBuffer(readings = []) {
       temperature: readAnalog(reading.analog_signals, "temperature", "temperatura"),
       powerKw: readAnalog(reading.analog_signals, "power_kw", "powerKw", "potencia_kw"),
       machineActive: typeof reading.machine_active === "boolean" ? Number(reading.machine_active) : null,
-      digital: Object.fromEntries(Object.entries(reading.digital_signals || {})
+      digital: Object.fromEntries(Object.entries(reading.states || reading.digital_signals || {})
         .map(([key, value]) => [key, typeof value === "boolean" ? Number(value) : null])),
     }));
 }
 
 export function readingStatus(reading) {
-  const digital = Object.fromEntries(Object.entries(reading.digital_signals || {}).map(([key, value]) => [key.toLowerCase(), value]));
+  const digital = Object.fromEntries(Object.entries(reading.states || reading.digital_signals || {}).map(([key, value]) => [key.toLowerCase(), value]));
   if (reading.voltage_24v === false) return "DESLIGADA";
   if (digital.emergencia || digital.emergency) return "EMERGENCIA";
   if (digital.alarme || digital.alarm) return "ALARME";
   if (digital.manutencao || digital.maintenance) return "MANUTENCAO";
-  if (reading.machine_active || digital.ciclo || digital.cycle) return "OPERANDO";
+  if (reading.machine_active || digital.em_execucao || digital.ciclo || digital.cycle) return "OPERANDO";
   return "PARADA";
 }
 

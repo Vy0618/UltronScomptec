@@ -6,49 +6,31 @@
 #include <ArduinoJson.h>
 
 namespace ultron {
-inline void writeSnapshot(JsonObject document, const MesaSnapshot& s) {
-  document["machine_active"] = s.cycleActive;
+inline void writeSnapshot(JsonObject document, const CncSnapshot& s) {
+  document["machine_active"] = bool(s.activeInputs & 1U);
   document["voltage_24v"] = nullptr;
   JsonObject digital = document["digital_signals"].to<JsonObject>();
-  digital["ciclo"] = s.cycleActive;
-  digital["alarme"] = s.fault;
-  digital["altura_media_bloqueada"] = !(s.rawInputs & 2);
-  digital["altura_pequena_bloqueada"] = !(s.rawInputs & 4);
-  digital["altura_grande_bloqueada"] = !(s.rawInputs & 8);
-  digital["metal_presente"] = bool(s.rawInputs & 16);
-  digital["queda1_ocupada"] = bool(s.rawInputs & 32);
-  digital["queda2_ocupada"] = bool(s.rawInputs & 64);
-  digital["rampa1_cheia"] = s.ramp1Full;
-  digital["rampa2_cheia"] = s.ramp2Full;
+  const char* names[] = {"em_execucao", "pausa", "parada", "emergencia",
+                         "motor_ligado", "automatico", "manual", "alarme"};
+  for (uint8_t i = 0; i < 8; ++i) digital[names[i]] = bool(s.activeInputs & (1U << i));
   document["analog_signals"].to<JsonObject>();
   JsonObject extra = document["extra_signals"].to<JsonObject>();
+  extra["profile"] = "boolean_monitor_v1";
   extra["uptime_seconds"] = s.uptimeMs / 1000;
-  JsonObject mesa = extra["mesa"].to<JsonObject>();
-  mesa["estado"] = s.state;
-  mesa["altura"] = s.height;
-  mesa["metal_memorizado"] = s.metal;
-  mesa["rampa1_cheia"] = s.ramp1Full;
-  mesa["rampa2_cheia"] = s.ramp2Full;
-  mesa["capturado_millis"] = s.capturedMs;
-  JsonObject inputs = mesa["entradas_brutas"].to<JsonObject>();
-  const char* inputNames[] = {"I1", "I2", "I3", "I4", "I5", "I6", "I7"};
-  for (uint8_t i = 0; i < 7; ++i) inputs[inputNames[i]] = bool(s.rawInputs & (1U << i));
-  JsonObject outputs = mesa["saidas_comandadas"].to<JsonObject>();
-  outputs["O1"] = bool(s.commandedOutputs & 1);
-  outputs["O2"] = bool(s.commandedOutputs & 2);
-  outputs["O3"] = bool(s.commandedOutputs & 4);
-  JsonObject counts = mesa["contadores"].to<JsonObject>();
-  counts["total"] = s.total;
-  counts["reto"] = s.straight;
-  counts["queda1"] = s.drop1;
-  counts["queda2"] = s.drop2;
-  counts["falhas"] = s.faults;
+  extra["capturado_millis"] = s.capturedMs;
+  JsonObject raw = extra["entradas_brutas"].to<JsonObject>();
+  const char* inputs[] = {"I1", "I2", "I3", "I4", "I5", "I6", "I7", "I8"};
+  for (uint8_t i = 0; i < 8; ++i) raw[inputs[i]] = bool(s.rawInputs & (1U << i));
+  JsonObject clp = extra["clp_inputs"].to<JsonObject>();
+  const char* addresses[] = {"D000", "D001", "D002", "D003", "D004", "D005", "D006", "D007"};
+  for (uint8_t i = 0; i < 8; ++i) clp[addresses[i]] = bool(s.activeInputs & (1U << i));
 }
 
 inline bool serializeUsbReading(const Reading& reading, const char* firmware, uint64_t discarded,
-                                char* output, size_t capacity) {
+                                char* output, size_t capacity, const char* machineId = "1") {
   JsonDocument document;
   document["protocol"] = 1;
+  document["machine_id"] = machineId;
   document["sequence"] = reading.sequence;
   document["uptime_ms"] = reading.snapshot.uptimeMs;
   document["firmware_version"] = firmware;

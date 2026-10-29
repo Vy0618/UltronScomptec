@@ -1,0 +1,552 @@
+{
+  "_meta": {
+    "descricao": "Inventário central de configuração do SCOMPTEC, com valores padrão encontrados nos fontes.",
+    "versao": 1,
+    "carregamento_automatico": false,
+    "como_usar": "Edite os valores como referência da instalação e aplique-os no destino indicado em cada grupo. Este JSON não é lido automaticamente pelos componentes.",
+    "valores_locais": "Não foram importados backend/config.json, backend/.env, frontend/.env ou optaSecrets.h. Credenciais e identidades devem ser preenchidas pela instalação.",
+    "escopo": "Ambiente, comunicação, aquisição, limites operacionais, ferramentas, preferências e build. Variáveis temporárias, dados de negócio, cores/layout, dependências e constantes internas de protocolos não são opções de instalação.",
+    "precedencia_backend": [
+      "ambiente do processo",
+      "backend/.env",
+      "backend/config.json",
+      "padrões do código"
+    ],
+    "simulacao": "ULTRON_SIMULATION=true impede carregar backend/.env e backend/config.json; banco e credenciais precisam ser fornecidos pelo ambiente isolado.",
+    "sincronizacao": [
+      "VITE_API_BASE_URL e --api da ponte devem apontar para a mesma API, incluindo /api.",
+      "BACKEND_PORT e API_PREFIX do firmware HTTP devem coincidir com a API.",
+      "BACKEND_HOST do firmware HTTP deve ser acessível pelo Opta; não usar localhost.",
+      "INGEST_API_KEY é a chave genérica da API e dos publicadores; quando vazia, DEVICE_API_KEY é usada como compatibilidade.",
+      "CORS_ORIGINS deve incluir a origem real do frontend.",
+      "Serial do firmware e da ponte deve usar a mesma velocidade.",
+      "A ponte exige --porta; usa machine_id do firmware (padrão 1, que resolve CNC-001), ou --machine-id para substituir. --mac/--device-id são opções de compatibilidade.",
+      "O limite de quadro da ponte deve acomodar o JSON emitido pelo firmware."
+    ],
+    "familias_cnc": [
+      "Mitsubishi M60",
+      "Mitsubishi M70",
+      "Mitsubishi M80"
+    ],
+    "fluxo_aplicacao": [
+      "Produtor de estados",
+      "JSON {machine_id, states}",
+      "API de eventos",
+      "MySQL",
+      "Dashboard independente de hardware"
+    ],
+    "fluxo_fisico_opcional": [
+      "Computador / Máquina",
+      "IHM / CLP simula a CNC e disponibiliza os sinais",
+      "Arduino Opta coleta I1–I8",
+      "Serial USB",
+      "Servidor com API, MySQL e dashboard"
+    ]
+  },
+  "backend": {
+    "ambiente": {
+      "origem": [
+        "backend/config.py",
+        "backend/config.example.json",
+        "backend/.env.example"
+      ],
+      "aplicacao": "Copiar somente as chaves de valores para backend/config.json ou definir no ambiente/backend/.env; reiniciar a API.",
+      "valores": {
+        "DATABASE_URL": "mysql+pymysql://root:@127.0.0.1:3306/cnc_monitor?charset=utf8mb4",
+        "SQL_ECHO": false,
+        "CORS_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
+        "AUTH_SECRET": "troque-esta-chave-em-producao",
+        "AUTH_TOKEN_TTL_MINUTES": 480,
+        "ADMIN_NAME": "Administrador",
+        "ADMIN_EMAIL": "",
+        "ADMIN_PASSWORD": "",
+        "DEVICE_OFFLINE_TIMEOUT_SECONDS": 90,
+        "DEVICE_API_KEY": "",
+        "INGEST_API_KEY": "",
+        "EVENT_OFFLINE_TIMEOUT_SECONDS": ""
+      }
+    },
+    "simulacao": {
+      "origem": "backend/config.py",
+      "aplicacao": "Definir no ambiente antes de iniciar o Python; não é aceito dentro de backend/config.json.",
+      "valores": {
+        "ULTRON_SIMULATION": false
+      }
+    },
+    "banco_e_relogio": {
+      "origem": [
+        "backend/database/connection.py",
+        "backend/services/clock.py",
+        "backend/services/security.py"
+      ],
+      "aplicacao": "Constantes no código; editar os fontes e reiniciar. Não são chaves aceitas pelo carregador JSON atual.",
+      "valores": {
+        "pool_pre_ping": true,
+        "pool_recycle": 1800,
+        "MAX_CLOCK_SKEW_SECONDS": 60,
+        "PASSWORD_ITERATIONS": 390000
+      },
+      "unidades": {
+        "pool_recycle": "segundos",
+        "MAX_CLOCK_SKEW_SECONDS": "segundos"
+      }
+    },
+    "consulta_historico": {
+      "origem": "backend/services/cncService.py",
+      "aplicacao": "page e limit são parâmetros da consulta HTTP; limites máximos exigem edição do código.",
+      "valores": {
+        "page": 1,
+        "limit": 50,
+        "limit_maximo": 500,
+        "utilizacao_horas": 24
+      }
+    },
+    "regras_de_alerta": {
+      "origem": [
+        "backend/schemas/admin.py",
+        "backend/services/adminService.py"
+      ],
+      "aplicacao": "Valores iniciais; alterações são salvas pelo painel administrativo ou PUT /api/admin/rules com autenticação administrativa. Este JSON não grava no banco.",
+      "valores": {
+        "current": 22,
+        "temperature": 65,
+        "voltageMin": 200,
+        "voltageMax": 240
+      },
+      "unidades": {
+        "current": "A",
+        "temperature": "°C",
+        "voltageMin": "V",
+        "voltageMax": "V"
+      }
+    }
+  },
+  "servidores": {
+    "api": {
+      "origem": [
+        "README.md",
+        "iniciarLocal.ps1"
+      ],
+      "aplicacao": "Argumentos --host e --port do uvicorn; no inicializador Windows, usar -PortaApi.",
+      "valores": {
+        "host": "0.0.0.0",
+        "port": 8000,
+        "app": "main:app",
+        "app_dir": "backend"
+      }
+    },
+    "vite": {
+      "origem": "frontend/vite.config.js",
+      "aplicacao": "Editar vite.config.js ou usar --host/--port do Vite; reiniciar o frontend.",
+      "valores": {
+        "base": "./",
+        "host": "0.0.0.0",
+        "port": 5173,
+        "strictPort": true,
+        "allowedHosts": true
+      }
+    }
+  },
+  "frontend": {
+    "ambiente": {
+      "origem": [
+        "frontend/.env.example",
+        "frontend/src/services/api.js"
+      ],
+      "aplicacao": "Definir em frontend/.env ou no ambiente do Vite; reiniciar em desenvolvimento ou refazer build.",
+      "valores": {
+        "VITE_API_BASE_URL": "http://127.0.0.1:8000/api",
+        "VITE_USE_MOCKS": false
+      }
+    },
+    "comunicacao": {
+      "origem": [
+        "frontend/src/services/api.js",
+        "frontend/src/services/telemetry.js",
+        "frontend/src/services/machineData.js"
+      ],
+      "aplicacao": "Constantes/argumentos nos fontes; editar e reconstruir frontend.",
+      "valores": {
+        "request_timeout_ms": 10000,
+        "polling_interval_ms": 5000,
+        "SIMULATED_DELAY": 250,
+        "history_limit": 100,
+        "telemetry_buffer_limit": 100
+      }
+    },
+    "preferencias": {
+      "origem": "frontend/src/services/preferences.js",
+      "aplicacao": "Configurar na interface; salvo por usuário no localStorage. Editar DEFAULT_PREFERENCES para mudar padrões.",
+      "valores": {
+        "showToasts": true,
+        "toastDuration": 6,
+        "showBadge": true,
+        "compactAlerts": true,
+        "reduceMotion": false,
+        "theme": "light"
+      },
+      "opcoes": {
+        "toastDuration": [
+          4,
+          6,
+          10
+        ],
+        "theme": [
+          "light",
+          "dark"
+        ]
+      },
+      "unidades": {
+        "toastDuration": "segundos"
+      }
+    }
+  },
+  "electron": {
+    "ambiente": {
+      "origem": "frontend/electron/main.cjs",
+      "aplicacao": "Definir no ambiente antes de iniciar Electron em desenvolvimento; frontend/.env não é lido por esse processo.",
+      "valores": {
+        "ELECTRON_RENDERER_URL": "http://localhost:5173",
+        "ELECTRON_OPEN_DEVTOOLS": false
+      }
+    },
+    "janela": {
+      "origem": "frontend/electron/main.cjs",
+      "aplicacao": "Editar opções BrowserWindow e reconstruir aplicação.",
+      "valores": {
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1000,
+        "minHeight": 700,
+        "contextIsolation": true,
+        "nodeIntegration": false
+      }
+    },
+    "build": {
+      "origem": "frontend/package.json",
+      "aplicacao": "Editar build em package.json e executar electron:build.",
+      "valores": {
+        "appId": "com.scomptec.cnc",
+        "productName": "SCOMPTEC CNC",
+        "directories": {
+          "output": "release"
+        },
+        "electronDownload": {
+          "cache": ".cache/electron"
+        },
+        "npmRebuild": false,
+        "files": [
+          "dist/**/*",
+          "electron/**/*",
+          "package.json"
+        ],
+        "win": {
+          "target": "nsis"
+        }
+      }
+    }
+  },
+  "firmware_opta": {
+    "macros": {
+      "origem": "firmware/optaCncMonitor/config.h",
+      "aplicacao": "Definir em firmware/optaCncMonitor/optaSecrets.h e recompilar/gravar. O seletor configurarTransmissao.py tem prioridade sobre ULTRON_TELEMETRY_USB.",
+      "valores": {
+        "ULTRON_TELEMETRY_USB": 1,
+        "ULTRON_WIFI_SSID": "maker",
+        "ULTRON_WIFI_PASSWORD": "12345678",
+        "ULTRON_BACKEND_HOST": "IP_DO_NOTEBOOK_NO_HOTSPOT",
+        "ULTRON_DEVICE_API_KEY": "",
+        "ULTRON_INPUT_ACTIVE_LOW_MASK": 0,
+        "ULTRON_MACHINE_ID": "1"
+      },
+      "opcoes": {
+        "ULTRON_TELEMETRY_USB": {
+          "0": "HTTP/Wi-Fi",
+          "1": "USB serial"
+        }
+      },
+      "observacoes": [
+        "Senha Wi-Fi acima é o padrão público presente no fonte, não uma credencial local importada.",
+        "Na máscara de polaridade, bit 0 = I1 e bit 7 = I8; 1 significa ativo em nível baixo. Exemplo: 8 inverte I4."
+      ]
+    },
+    "constantes": {
+      "origem": "firmware/optaCncMonitor/config.h",
+      "aplicacao": "Editar constantes em config.h; recompilar e gravar.",
+      "valores": {
+        "BACKEND_PORT": 8000,
+        "API_PREFIX": "/api",
+        "SEND_INTERVAL_MS": 1000,
+        "WIFI_RETRY_INTERVAL_MS": 5000,
+        "HTTP_TIMEOUT_MS": 4000,
+        "MAX_PENDING_MS": 15000,
+        "HTTP_RETRY_INTERVAL_MS": 1000,
+        "TELEMETRY_QUEUE_CAPACITY": 16,
+        "INPUT_FILTER_MS": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "observacoes": [
+        "INPUT_FILTER_MS segue I1–I8; zero desativa o atraso intencional.",
+        "Fila em RAM, sem retenção persistente."
+      ]
+    },
+    "identificacao": {
+      "origem": "firmware/optaCncMonitor/config.h",
+      "aplicacao": "Versões derivadas do transporte escolhido; alterar junto da versão do firmware.",
+      "valores": {
+        "FIRMWARE_VERSION_USB": "opta-monitor-usb-2.0.0",
+        "FIRMWARE_VERSION_HTTP": "opta-monitor-wifi-2.0.0",
+        "profile": "boolean_monitor_v1"
+      }
+    },
+    "aquisicao_e_transporte": {
+      "origem": [
+        "firmware/optaCncMonitor/cncMonitor.cpp",
+        "firmware/optaCncMonitor/optaCncMonitor.ino",
+        "firmware/optaCncMonitor/telemetry.cpp",
+        "firmware/optaCncMonitor/telemetryCore.h"
+      ],
+      "aplicacao": "Constantes/valores nos fontes; recompilar e gravar.",
+      "valores": {
+        "serial_baud": 115200,
+        "loop_delay_ms": 1,
+        "transport_loop_delay_ms": 20,
+        "NETWORK_THREAD_STACK": 16384,
+        "PAYLOAD_BYTES": 2048
+      }
+    },
+    "entradas": {
+      "origem": [
+        "firmware/optaCncMonitor/cncMonitor.cpp",
+        "firmware/optaCncMonitor/telemetryPayload.h"
+      ],
+      "aplicacao": "Mapeamento fixo do perfil atual; alteração exige revisar aquisição, serialização e contrato e recompilar.",
+      "valores": {
+        "I1": {
+          "pino": "A0",
+          "sinal": "em_execucao",
+          "sinal_clp": "D000"
+        },
+        "I2": {
+          "pino": "A1",
+          "sinal": "pausa",
+          "sinal_clp": "D001"
+        },
+        "I3": {
+          "pino": "A2",
+          "sinal": "parada",
+          "sinal_clp": "D002"
+        },
+        "I4": {
+          "pino": "A3",
+          "sinal": "emergencia",
+          "sinal_clp": "D003"
+        },
+        "I5": {
+          "pino": "A4",
+          "sinal": "motor_ligado",
+          "sinal_clp": "D004"
+        },
+        "I6": {
+          "pino": "A5",
+          "sinal": "automatico",
+          "sinal_clp": "D005"
+        },
+        "I7": {
+          "pino": "A6",
+          "sinal": "manual",
+          "sinal_clp": "D006"
+        },
+        "I8": {
+          "pino": "A7",
+          "sinal": "alarme",
+          "sinal_clp": "D007"
+        }
+      }
+    }
+  },
+  "ponte_usb": {
+    "argumentos": {
+      "origem": "tools/ponteUsb.py",
+      "aplicacao": "--porta é obrigatório; sem identidade explícita, usa machine_id do firmware (padrão 1). --stdout produz JSON Lines sem rede.",
+      "valores": {
+        "--porta": null,
+        "--api": "http://127.0.0.1:8000/api",
+        "--mac": null,
+        "--device-id": null,
+        "--listar-portas": false,
+        "--machine-id": null,
+        "--stdout": false
+      }
+    },
+    "ambiente": {
+      "origem": "tools/ponteUsb.py",
+      "aplicacao": "Definir no ambiente ou backend/.env antes de iniciar a ponte. A ponte atual não carrega backend/config.json.",
+      "valores": {
+        "DEVICE_API_KEY": "",
+        "INGEST_API_KEY": ""
+      }
+    },
+    "constantes": {
+      "origem": "tools/ponteUsb.py",
+      "aplicacao": "Editar constantes/valores nos fontes e reiniciar a ponte.",
+      "valores": {
+        "serial_baud": 115200,
+        "serial_timeout_seconds": 1,
+        "MAX_FRAME_BYTES": 16384,
+        "MAX_PENDING_SECONDS": 15,
+        "http_timeout_seconds": 3,
+        "pending_queue_capacity": 1,
+        "read_chunk_bytes": 256,
+        "no_telemetry_warning_seconds": 10,
+        "serial_reconnect_seconds": 2,
+        "retry_initial_seconds": 1,
+        "retry_max_seconds": 4,
+        "worker_join_timeout_seconds": 4
+      }
+    }
+  },
+  "ferramentas": {
+    "configurar_transmissao": {
+      "origem": "tools/configurarTransmissao.py",
+      "aplicacao": "Argumentos CLI; --transporte obrigatório; --porta obrigatório para gravação.",
+      "valores": {
+        "--transporte": "usb",
+        "--porta": null,
+        "--somente-compilar": false,
+        "--cli": "arduino-cli",
+        "--config-file": null,
+        "FQBN": "arduino:mbed_opta:opta",
+        "output_usb": ".build/firmware/opta-usb",
+        "output_http": ".build/firmware/opta-wifi"
+      },
+      "observacoes": [
+        "O valor usb é a escolha recomendada do perfil atual; o parser não fornece default para --transporte.",
+        "FQBN e caminhos de saída são constantes no script."
+      ]
+    },
+    "configurar_rede_windows": {
+      "origem": "tools/configurarRede.ps1",
+      "aplicacao": "Parâmetros PowerShell; BackendHost omitido tenta identificar o IPv4 Wi-Fi; SSID/senha são literais no script.",
+      "valores": {
+        "BackendHost": null,
+        "DeviceKey": "",
+        "ULTRON_WIFI_SSID": "maker",
+        "ULTRON_WIFI_PASSWORD": "12345678"
+      }
+    },
+    "iniciar_local_windows": {
+      "origem": "iniciarLocal.ps1",
+      "aplicacao": "Parâmetros PowerShell; os ambientes de simulação são definidos pelo próprio inicializador.",
+      "valores": {
+        "Simular": false,
+        "Acao": "todos",
+        "PortaApi": 8000,
+        "PortaDashboard": 5173,
+        "frontend_host": "127.0.0.1",
+        "backend_host": "0.0.0.0",
+        "NO_PROXY": "localhost,127.0.0.1",
+        "PYTHONUNBUFFERED": "1",
+        "simulacao_DATABASE_URL": "sqlite:///<raiz-do-projeto>/.local/simulacao.db",
+        "simulacao_DEVICE_OFFLINE_TIMEOUT_SECONDS": 10
+      },
+      "opcoes": {
+        "Acao": [
+          "todos",
+          "backend",
+          "frontend",
+          "verificar",
+          "parar"
+        ]
+      }
+    },
+    "simulador": {
+      "origem": "tools/simuladorCnc.py",
+      "aplicacao": "Produtor JSON Lines em stdout; não acessa API nem hardware. Compor com publicarEventos.py ou redirecionar para arquivo.",
+      "valores": {
+        "--machine-id": null,
+        "--state": "em_execucao",
+        "--count": 1,
+        "--interval": 1
+      },
+      "observacoes": [
+        "--machine-id é obrigatório; --count=-1 produz continuamente; --state=cycle alterna os oito estados."
+      ]
+    },
+    "testar_opta_windows": {
+      "origem": "tools/testarOpta.ps1",
+      "aplicacao": "Parâmetros PowerShell; cria registros de teste na API informada.",
+      "valores": {
+        "BaseUrl": "http://127.0.0.1:8000/api",
+        "MacAddress": "02:00:00:00:00:99",
+        "DeviceKey": "",
+        "http_timeout_seconds": 15
+      }
+    },
+    "testar_firmware_windows": {
+      "origem": "firmware/testarFirmware.ps1",
+      "aplicacao": "Parâmetros PowerShell; caminhos omitidos usam descoberta/padrões do script.",
+      "valores": {
+        "HostOnly": false,
+        "CliPath": null,
+        "ZigPath": ".tools/zig/zig-windows-x86_64-0.13.0/zig.exe",
+        "ArduinoJson_include": ".tools/arduino-user/libraries/ArduinoJson/src",
+        "output_dir": ".build/firmware"
+      }
+    },
+    "testar_projeto_windows": {
+      "origem": "tools/testarProjeto.ps1",
+      "aplicacao": "Parâmetro PowerShell; variáveis de teste são isoladas pelo script.",
+      "valores": {
+        "Firmware": false
+      }
+    },
+    "teste_mysql": {
+      "origem": "backend/tests/testMysqlConcurrency.py",
+      "aplicacao": "Variável opcional no ambiente dos testes; exige banco de teste local separado.",
+      "valores": {
+        "ULTRON_TEST_MYSQL_URL": ""
+      }
+    },
+    "publicador": {
+      "origem": "tools/publicarEventos.py",
+      "aplicacao": "Lê eventos JSON Lines de stdin e publica em /api/events. Respostas em stdout, erros em stderr.",
+      "valores": {
+        "--api": "http://127.0.0.1:8000/api",
+        "--key": "",
+        "--timeout": 10
+      },
+      "observacoes": [
+        "--key usa INGEST_API_KEY e, como compatibilidade, DEVICE_API_KEY do ambiente."
+      ]
+    }
+  },
+  "legado": {
+    "esp32": {
+      "origem": [
+        "firmware/legacy/esp32CncMonitor/esp32CncMonitor.ino",
+        "firmware/legacy/esp32CncMonitor/platformio.ini"
+      ],
+      "aplicacao": "Somente referência do firmware antigo; não usado no Opta ativo.",
+      "valores": {
+        "WIFI_SSID": "NOME_DA_REDE",
+        "WIFI_PASSWORD": "SENHA_DA_REDE",
+        "BACKEND_URL": "http://192.168.1.50:8000/api/devices/register",
+        "serial_baud": 115200,
+        "retry_ms": 5000,
+        "platform": "espressif32",
+        "board": "esp32dev",
+        "framework": "arduino",
+        "monitor_speed": 115200
+      }
+    }
+  }
+}

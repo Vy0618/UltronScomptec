@@ -139,7 +139,7 @@ export default function Sidebar({ open = false, onClose }) {
             {isAdminUser(readSessionUser()) && <NavItem to="/admin" label="Central administrativa" icon={ShieldCheck} onNavigate={onClose} />}
             <NavItem to="/clientes" label="Clientes" icon={Building2} onNavigate={onClose} />
             <NavItem to="/unidades" label="Unidades" icon={MapPin} onNavigate={onClose} />
-            <NavItem to="/dispositivos" label="Módulos Arduino Opta WiFi" icon={Cpu} onNavigate={onClose} />
+            <NavItem to="/dispositivos" label="Coletores opcionais" icon={Cpu} onNavigate={onClose} />
           </div>
 
           <div className="space-y-1">

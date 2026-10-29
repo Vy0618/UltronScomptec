@@ -2,8 +2,8 @@
 from datetime import timedelta
 
 from services.clock import OFFLINE_TIMEOUT_SECONDS, normalize_datetime
-from services.telemetry import derive_status
-from schemas.telemetry import TelemetryCreate
+from services.machineState import derive_status
+from schemas.observation import Observation
 
 STATES = ("OPERANDO", "PARADA", "ALARME", "EMERGENCIA", "MANUTENCAO", "DESLIGADA")
 
@@ -30,7 +30,7 @@ def calculate_utilization(readings, now, hours=24, timeout=OFFLINE_TIMEOUT_SECON
         cursor = max(start, timestamp)
         if cursor >= end:
             continue
-        state = derive_status(TelemetryCreate(
+        state = derive_status(Observation(
             machine_active=reading.machine_active,
             voltage_24v=reading.voltage_24v,
             digital_signals=reading.digital_signals or {},

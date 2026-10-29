@@ -15,7 +15,7 @@ os.environ["DATABASE_URL"] = "sqlite://"
 
 from main import app
 from database.connection import get_db
-from database.models import Base, Device, CNC, Telemetry
+from database.models import Base, Device, CNC, MachineEvent
 from services.clock import utcnow
 
 
@@ -47,7 +47,7 @@ def test_utilization_includes_more_than_latest_100_readings(api_client, monkeypa
     now = utcnow()
     monkeypatch.setattr(cncService, "utcnow", lambda: now)
     for i in range(125):
-        db.add(Telemetry(device_id=registration["device"]["id"],
+        db.add(MachineEvent(machine_id=registration["cnc"]["id"], device_id=registration["device"]["id"],
             timestamp=now - timedelta(seconds=1250 - i * 10),
             machine_active=i < 25, voltage_24v=True, digital_signals={}, analog_signals={}))
     db.commit()
@@ -118,7 +118,7 @@ def test_opta_to_database_to_frontend_contract(api_client):
     response = post(client, registration, digital_signals={"ciclo": True}, analog_signals={"current": 12.5}, extra_signals={"rssi": -60})
     assert response.status_code == 201
     assert response.json()["timestamp"].endswith("Z")
-    assert db.get(Telemetry, response.json()["id"]).analog_signals == {"current": 12.5}
+    assert db.scalar(select(MachineEvent).where(MachineEvent.id == response.json()["id"])).analog_signals == {"current": 12.5}
     snapshot = status(client, registration)
     assert snapshot["status"] == "OPERANDO"
     assert snapshot["gateway_online"] is True
@@ -130,31 +130,31 @@ def test_opta_to_database_to_frontend_contract(api_client):
     assert client.get("/api/health").json()["database"] == "ok"
 
 
-def test_mesa_payload_preserves_unknown_voltage_and_all_signals(api_client):
+def test_cnc_payload_preserves_unknown_voltage_and_all_signals(api_client):
     client, db = api_client
     registration = register(client)
     assert len(registration["telemetry_session_id"]) == 36
     assert registration["server_time_unix"] > 1700000000
-    path = Path(__file__).resolve().parents[2] / "firmware/optaMesaMonitor/mesaSample.json"
+    path = Path(__file__).resolve().parents[2] / "firmware/optaCncMonitor/monitorSample.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["timestamp"] = utcnow().isoformat() + "Z"
     response = client.post(f"/api/devices/{registration['device']['id']}/telemetry", json=payload)
     assert response.status_code == 201
     assert response.json()["voltage_24v"] is None
-    saved = db.get(Telemetry, response.json()["id"])
+    saved = db.scalar(select(MachineEvent).where(MachineEvent.id == response.json()["id"]))
     assert saved.voltage_24v is None
     assert saved.analog_signals == {}
     snapshot = status(client, registration)
     assert snapshot["status"] == "OPERANDO"
-    assert snapshot["extra_signals"]["mesa"] == payload["extra_signals"]["mesa"]
-    assert snapshot["digital_signals"]["altura_pequena_bloqueada"] is True
-    assert "emergencia" not in snapshot["digital_signals"]
+    assert snapshot["extra_signals"]["entradas_brutas"] == payload["extra_signals"]["entradas_brutas"]
+    assert snapshot["digital_signals"]["motor_ligado"] is True
+    assert snapshot["digital_signals"]["emergencia"] is False
     history = client.get(f"/api/cncs/{registration['cnc']['id']}/history").json()
-    assert history["items"][0]["extra_signals"]["mesa"]["contadores"]["total"] == 3
+    assert history["items"][0]["digital_signals"] == payload["digital_signals"]
 
 
 @pytest.mark.parametrize("cycle,fault,expected", [(False, False, "PARADA"), (True, False, "OPERANDO"), (False, True, "ALARME")])
-def test_mesa_without_supply_sensor(api_client, cycle, fault, expected):
+def test_cnc_without_supply_sensor(api_client, cycle, fault, expected):
     client, _ = api_client
     registration = register(client)
     response = post(client, registration, voltage_24v=None, machine_active=cycle, digital_signals={"ciclo": cycle, "alarme": fault})
@@ -183,7 +183,7 @@ def test_retries_and_conflicting_event_id(api_client):
     first = post(client, registration, event_id="boot1-1")
     second = post(client, registration, event_id="boot1-1")
     assert first.json()["id"] == second.json()["id"]
-    assert len(db.scalars(select(Telemetry)).all()) == 1
+    assert len(db.scalars(select(MachineEvent)).all()) == 1
     assert post(client, registration, event_id="boot1-1", machine_active=False).status_code == 409
 
 
@@ -232,6 +232,7 @@ def test_offline_and_stale_are_distinct(api_client):
     assert status(client, registration)["status"] == "DADOS_DESATUALIZADOS"
     device = db.get(Device, registration["device"]["id"])
     device.last_seen = utcnow() - timedelta(minutes=5)
+    db.get(CNC, registration["cnc"]["id"]).last_seen = device.last_seen
     db.commit()
     assert status(client, registration)["status"] == "SEM_COMUNICACAO"
     assert client.get("/api/cncs").json()[0]["status"] == "SEM_COMUNICACAO"
@@ -269,9 +270,11 @@ def test_history_timezone_pagination_and_invalid_range(api_client):
     assert client.get(path, params={"start": "2026-02-01", "end": "2026-01-01"}).status_code == 422
 
 
-def test_reassignment_cannot_move_machine_history(api_client):
+def test_reassignment_preserves_machine_owned_history(api_client):
     client, _ = api_client
     registration = register(client)
     post(client, registration)
     cnc = client.post("/api/cncs", json={"name": "Outra CNC"}).json()
-    assert client.put(f"/api/devices/{registration['device']['id']}", json={"cnc_id": cnc["id"]}).status_code == 409
+    assert client.put(f"/api/devices/{registration['device']['id']}", json={"cnc_id": cnc["id"]}).status_code == 200
+    assert client.get(f"/api/cncs/{registration['cnc']['id']}/history").json()["total"] == 1
+    assert client.get(f"/api/cncs/{cnc['id']}/history").json()["total"] == 0

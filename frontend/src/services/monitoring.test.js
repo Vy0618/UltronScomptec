@@ -13,9 +13,9 @@ function server() {
     if (path === "/cncs") return ["a", "b"].map(id => ({ id, code: `CNC-${id}`, name: `Máquina ${id}` }));
     if (path === "/devices") return ["a", "b"].map(id => ({ id: `device-${id}`, cnc_id: id, code: `OPTA-${id}`, firmware_version: "test" }));
     const id = path.split("/")[2];
-    if (path.endsWith("/status")) return { status: statuses[id], gateway_online: true, status_since: timestamp,
-      last_seen: timestamp, telemetry_timestamp: timestamp, digital_signals: { emergencia: statuses[id] === "EMERGENCIA" },
-      analog_signals: {}, extra_signals: { mesa: { estado: "aguardando_peca" }, rssi: -50 } };
+    if (path.endsWith("/status")) return { status: statuses[id], online: true, status_since: timestamp,
+      last_seen: timestamp, telemetry_timestamp: timestamp, states: { emergencia: statuses[id] === "EMERGENCIA" },
+      analog_signals: {}, extra_signals: {} };
     if (path.includes("/history")) return { total: 1, items: [{ id, timestamp, machine_active: true, digital_signals: { ciclo: true } }] };
     if (path.endsWith("/utilization")) return { buckets: [] };
     throw new Error(`Unexpected request ${path}`);
@@ -23,24 +23,22 @@ function server() {
   return { failures, statuses, request };
 }
 
-test("real snapshots map mesa signals without inventing analog readings or historical power", async () => {
+test("real snapshots map CNC signals without inventing analog readings or historical power", async () => {
   const source = server();
   const [machine] = await loadMachines(source.request);
   assert.equal(machine.status, "EMERGENCIA");
   assert.equal(machine.communicationStatus, "ONLINE");
-  assert.equal(machine.mesa.estado, "aguardando_peca");
+  assert.equal(machine.digitalSignals.emergencia, true);
   assert.equal(machine.current, null);
   assert.equal(machine.powerAvg, null);
-  assert.equal(machine.deviceId, "OPTA-a");
   assert.equal(monitoringWarning([machine]), null);
 });
 
-test("history, utilization and device metadata failures preserve current status and previous data", async () => {
+test("history and utilization failures preserve current status and previous data", async () => {
   const source = server();
   const initial = await loadMachines(source.request);
   source.failures.add("/cncs/a/history?limit=100");
   source.failures.add("/cncs/a/utilization");
-  source.failures.add("/devices");
   source.statuses.a = "ALARME";
   const machines = await loadMachines(source.request, initial);
   assert.equal(machines[0].status, "ALARME");
@@ -48,7 +46,6 @@ test("history, utilization and device metadata failures preserve current status 
   assert.equal(machines[0].dataStale, false);
   assert.deepEqual(machines[0].readings, initial[0].readings);
   assert.deepEqual(machines[0].utilization, initial[0].utilization);
-  assert.equal(machines[0].deviceId, "OPTA-a");
   assert.match(monitoringWarning(machines), /Atualização parcial/);
 });
 
@@ -119,4 +116,21 @@ test("confirmed emergency and resolution notify once, while initial load and rep
   assert.equal(resolution.notices.length, 1);
   assert.equal(resolution.notices[0].resolved, true);
   assert.equal(monitoringAlerts(recovered).length, 0);
+});
+
+test("dashboard never queries collector endpoints and accepts arbitrary machine states", async () => {
+  const paths = [];
+  const request = async path => {
+    paths.push(path);
+    if (path === "/cncs") return [{ id: "machine-only", code: "CNC-001", name: "Origem independente" }];
+    if (path.endsWith("/status")) return { status: "PARADA", online: true, states: { porta_aberta: true, pausa: false }, last_seen: timestamp };
+    if (path.includes("/history")) return { total: 0, items: [] };
+    if (path.endsWith("/utilization")) return { buckets: [] };
+    throw new Error(`Consulta indevida: ${path}`);
+  };
+  const [machine] = await loadMachines(request);
+  assert.deepEqual(machine.digitalSignals, { porta_aberta: true, pausa: false });
+  assert.equal(machine.communicationStatus, "ONLINE");
+  assert.ok(paths.every(path => !path.includes("devices")));
+  assert.equal(monitoringWarning([machine]), null);
 });

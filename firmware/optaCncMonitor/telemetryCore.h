@@ -51,7 +51,7 @@ class CaptureClock {
   bool ready_ = false;
 };
 
-struct Reading { MesaSnapshot snapshot; uint64_t sequence = 0; };
+struct Reading { CncSnapshot snapshot; uint64_t sequence = 0; };
 struct PendingReading {
   Reading reading;
   char eventId[60] = {};
@@ -65,12 +65,8 @@ template<size_t Capacity> class TelemetryCore {
   TelemetryCore(uint32_t intervalMs, uint32_t maximumAgeMs)
     : intervalMs_(intervalMs), maximumAgeMs_(maximumAgeMs) { static_assert(Capacity > 0, "queue required"); }
 
-  bool enqueue(const MesaSnapshot& sample) {
-    const bool transition = !hasPrevious_ || strcmp(previous_.state, sample.state) != 0 ||
-      previous_.fault != sample.fault || previous_.cycleActive != sample.cycleActive ||
-      previous_.ramp1Full != sample.ramp1Full || previous_.ramp2Full != sample.ramp2Full ||
-      previous_.total != sample.total || previous_.straight != sample.straight ||
-      previous_.drop1 != sample.drop1 || previous_.drop2 != sample.drop2 || previous_.faults != sample.faults;
+  bool enqueue(const CncSnapshot& sample) {
+    const bool transition = !hasPrevious_ || previous_.activeInputs != sample.activeInputs;
     if (!transition && uint32_t(sample.capturedMs - lastCaptureMs_) < intervalMs_) return false;
     previous_ = sample;
     hasPrevious_ = true;
@@ -146,7 +142,7 @@ template<size_t Capacity> class TelemetryCore {
   size_t head_ = 0, size_ = 0;
   uint64_t sequence_ = 0, dropped_ = 0, confirmed_ = 0;
   uint32_t intervalMs_, maximumAgeMs_, lastCaptureMs_ = 0;
-  MesaSnapshot previous_;
+  CncSnapshot previous_;
   bool hasPrevious_ = false, hasPending_ = false;
   char deviceId_[37] = {}, bootId_[37] = {};
   CaptureClock clock_;

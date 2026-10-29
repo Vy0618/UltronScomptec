@@ -1,0 +1,13 @@
+{
+  "machine_id": "CNC-001",
+  "states": {
+    "em_execucao": true,
+    "pausa": false,
+    "parada": false,
+    "emergencia": false,
+    "motor_ligado": true,
+    "automatico": true,
+    "manual": false,
+    "alarme": false
+  }
+}

@@ -20,7 +20,7 @@ os.environ['DATABASE_URL'] = 'sqlite://'
 from ponteUsb import Frames, Gateway, HttpApi, reading_from, sender
 from main import app
 from database.connection import get_db
-from database.models import Base, Telemetry
+from database.models import Base, MachineEvent
 
 
 @pytest.fixture
@@ -45,9 +45,9 @@ def api(monkeypatch):
 
 
 def frame():
-    payload = json.loads((ROOT/'firmware/optaMesaMonitor/mesaSample.json').read_text())
+    payload = json.loads((ROOT/'firmware/optaCncMonitor/monitorSample.json').read_text())
     payload.pop('event_id',None); payload.pop('timestamp',None)
-    return {'protocol':1,'sequence':1,'uptime_ms':1000,'firmware_version':'mesa-opta-usb-1.1.0','payload':payload}
+    return {'protocol':1,'sequence':1,'uptime_ms':1000,'firmware_version':'opta-monitor-usb-2.0.0','payload':payload}
 
 
 def test_chunks_registration_database_and_frontend(api):
@@ -62,16 +62,16 @@ def test_chunks_registration_database_and_frontend(api):
     result=gateway.send(reading,data)
     retry=gateway.send(reading,data)
     assert result['id']==retry['id']
-    assert len(db.scalars(select(Telemetry)).all())==1
+    assert len(db.scalars(select(MachineEvent)).all())==1
     devices=client.get('/api/devices').json()
     assert len(devices)==1
     cnc=devices[0]['cnc_id']
     status=client.get(f'/api/cncs/{cnc}/status').json()
     assert status['gateway_online'] is True
     assert status['status']=='OPERANDO'
-    assert status['extra_signals']['mesa']==reading.payload['extra_signals']['mesa']
+    assert status['digital_signals']==reading.payload['digital_signals']
     assert status['voltage_24v'] is None
-    assert 'emergencia' not in status['digital_signals']
+    assert status['digital_signals']['emergencia'] is False
     assert client.get(f'/api/cncs/{cnc}/history').json()['total']==1
 
 
@@ -102,16 +102,9 @@ def test_host_session_changes_on_opta_reboot():
     assert reboot['event_id']!=first['event_id']
 
 
-def test_simulator_contract_maps_into_zip_contract(api):
-    adapter,client,_=api
-    reading=reading_from({'sequencia':1,'uptime_ms':1000,'machine_active':True,
-        'digital_signals':{'ciclo':True,'alarme':False,'emergencia':None},
-        'contadores':{'iniciadas':3,'reto':1,'queda1':1,'queda2':0,'falhas':1},
-        'estado':'coletando_altura','entradas':{'I2':False},'saidas':{'O1':True}})
-    assert 'emergencia' not in reading.payload['digital_signals']
-    assert reading.payload['extra_signals']['mesa']['contadores']['total']==3
-    gateway=Gateway(adapter,mac='AA:BB:CC:DD:EE:14')
-    assert gateway.send(reading,gateway.payload_for(reading))['extra_signals']['mesa']['entradas_brutas']=={'I2':False}
+def test_serial_requires_versioned_acquisition_frame():
+    with pytest.raises(ValueError, match='protocolo USB incompatível'):
+        reading_from({'machine_active': True, 'digital_signals': {'em_execucao': True}})
 
 
 def test_resync_and_malformed_frames():
@@ -187,8 +180,8 @@ def test_linux_serial_with_real_firmware_frame_reaches_api(api):
         payload = gateway.payload_for(reading)
         saved = gateway.send(reading, payload)
         assert gateway.send(reading, payload)['id'] == saved['id']
-        assert len(db.scalars(select(Telemetry)).all()) == 1
-        assert saved['extra_signals']['mesa'] == expected['payload']['extra_signals']['mesa']
+        assert len(db.scalars(select(MachineEvent)).all()) == 1
+        assert saved['digital_signals'] == expected['payload']['digital_signals']
         assert saved['extra_signals']['timestamp_source'] == 'usb_host_receive'
         assert saved['extra_signals']['transport'] == 'usb_serial'
         assert saved['analog_signals'] == {} and saved['voltage_24v'] is None
@@ -208,3 +201,45 @@ def test_list_ports_needs_no_identity(monkeypatch, capsys):
         device='/dev/ttyACM0', description='Opta', serial_number='test-opta')])
     main()
     assert '/dev/ttyACM0 | Opta | serial=test-opta' in capsys.readouterr().out
+
+
+def test_boolean_monitor_real_firmware_frame_reaches_api(api):
+    fixture = ROOT / '.build/firmware/monitor-usb-fixture.txt'
+    if not fixture.exists():
+        pytest.skip('Gere monitor-usb-fixture.txt com o teste C++ de telemetria')
+    frame = Frames().feed(fixture.read_text().strip())
+    reading = reading_from(frame)
+    adapter, client, db = api
+    gateway = Gateway(adapter, mac='AA:BB:CC:DD:EE:41')
+    payload = gateway.payload_for(reading)
+    saved = gateway.send(reading, payload)
+    assert saved['digital_signals'] == dict.fromkeys((
+        'em_execucao', 'pausa', 'parada', 'emergencia',
+        'motor_ligado', 'automatico', 'manual', 'alarme'), True)
+    assert saved['machine_active'] is True
+    assert saved['extra_signals']['profile'] == 'boolean_monitor_v1'
+    assert saved['extra_signals']['entradas_brutas'] == dict.fromkeys(
+        (f'I{i}' for i in range(1, 9)), True)
+    assert saved['voltage_24v'] is None and saved['analog_signals'] == {}
+    assert gateway.send(reading, payload)['id'] == saved['id']
+    assert len(db.scalars(select(MachineEvent)).all()) == 1
+    cnc = client.get('/api/devices').json()[0]['cnc_id']
+    assert client.get(f'/api/cncs/{cnc}/status').json()['status'] == 'EMERGENCIA'
+
+
+def test_default_firmware_id_reaches_machine_dashboard_without_collector_registration(api):
+    fixture = ROOT / '.build/firmware/monitor-usb-fixture.txt'
+    if not fixture.exists():
+        pytest.skip('Gere monitor-usb-fixture.txt com o teste C++ de telemetria')
+    adapter, client, _ = api
+    machine = client.post('/api/cncs', json={'name': 'IHM/CLP — ID 1'}).json()
+    wire = Frames().feed(fixture.read_text().strip())
+    assert wire['machine_id'] == '1'
+    reading = reading_from(wire)
+    gateway = Gateway(adapter)
+    saved = gateway.send(reading, gateway.payload_for(reading))
+    assert saved['machine_id'] == machine['id']
+    assert saved['states'] == wire['payload']['digital_signals']
+    assert client.get('/api/devices').json() == []
+    status = client.get(f"/api/cncs/{machine['id']}/status").json()
+    assert status['states'] == saved['states'] and status['online'] is True

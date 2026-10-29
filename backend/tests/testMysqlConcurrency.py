@@ -16,7 +16,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from database.models import Base, CNC, Device, Telemetry
+from database.models import Base, CNC, Device, MachineEvent
 from schemas.device import DeviceRegistration
 from schemas.telemetry import TelemetryCreate
 from services.clock import utcnow
@@ -103,6 +103,6 @@ def test_mysql_same_event_concurrently_is_persisted_once(mysql_engine):
         ids = concurrent_calls(send)
         assert len(set(ids)) == 1
         with Session(mysql_engine) as db:
-            assert db.scalar(select(func.count()).select_from(Telemetry).where(Telemetry.device_id == device_id)) == 1
+            assert db.scalar(select(func.count()).select_from(MachineEvent).where(MachineEvent.device_id == device_id)) == 1
     finally:
         remove_test_devices(mysql_engine, [mac])

@@ -1,6 +1,7 @@
 """Seleciona HTTP/Wi-Fi ou USB compilando e gravando o firmware do Opta."""
 import argparse
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -33,9 +34,14 @@ def main(argv=None):
     compile_command = common + [
         'compile', '--fqbn', FQBN,
         '--build-property', f'compiler.cpp.extra_flags=-DULTRON_TELEMETRY_USB_OVERRIDE={usb}',
-        '--output-dir', str(output), str(ROOT / 'firmware' / 'optaMesaMonitor'),
+        '--output-dir', str(output), str(ROOT / 'firmware' / 'optaCncMonitor'),
     ]
     try:
+        # --output-dir keeps older sketches' binaries. The uploader rejects a
+        # directory with multiple sketches, so always prepare a clean export.
+        if output.exists():
+            shutil.rmtree(output)
+        output.mkdir(parents=True, exist_ok=True)
         print(f'Compilando transporte {args.transporte.upper()}...', flush=True)
         subprocess.run(compile_command, cwd=ROOT, check=True)
         if args.somente_compilar:
@@ -60,7 +66,7 @@ def main(argv=None):
 
     print(f'Transporte {args.transporte.upper()} gravado no Opta.')
     if args.transporte == 'usb':
-        print('Inicie tools/ponteUsb.py com --porta e --device-id ou --mac. '
+        print('Inicie tools/ponteUsb.py com --porta; o ID da máquina vem do firmware. '
               'A porta pode mudar após a gravação.')
     else:
         print('O Opta enviará por Wi-Fi/HTTP usando a rede e o host de optaSecrets.h. '

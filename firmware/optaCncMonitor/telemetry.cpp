@@ -12,7 +12,7 @@
 namespace {
 constexpr uint32_t NETWORK_THREAD_STACK = 16384;
 rtos::Mutex snapshotMutex;
-rtos::Thread networkThread(osPriorityNormal, NETWORK_THREAD_STACK, nullptr, "opta-http");
+rtos::Thread networkThread(osPriorityNormal, NETWORK_THREAD_STACK, nullptr, "opta-telemetry");
 ultron::TelemetryCore<TELEMETRY_QUEUE_CAPACITY> telemetry(SEND_INTERVAL_MS, MAX_PENDING_MS);
 
 #if ULTRON_TELEMETRY_USB
@@ -29,7 +29,7 @@ void networkTask() {
     const bool ready = connected && telemetry.takeUsb(now, reading);
     const uint64_t dropped = telemetry.dropped();
     snapshotMutex.unlock();
-    if (ready && ultron::serializeUsbReading(reading, FIRMWARE_VERSION, dropped, body, sizeof(body))) {
+    if (ready && ultron::serializeUsbReading(reading, FIRMWARE_VERSION, dropped, body, sizeof(body), MACHINE_ID)) {
       Serial.print("CNC_JSON:");
       Serial.println(body);
     }
@@ -93,7 +93,7 @@ void networkTask() {
   uint64_t reportedDiscarded = 0;
   bool wasConnected = false;
   const bool hostConfigured = BACKEND_HOST[0] && strcmp(BACKEND_HOST, "IP_DO_NOTEBOOK_NO_HOTSPOT") != 0;
-  if (!hostConfigured) Serial.println("[TELEMETRIA] Configure ULTRON_BACKEND_HOST em optaSecrets.h; controle local continua.");
+  if (!hostConfigured) Serial.println("[TELEMETRIA] Configure ULTRON_BACKEND_HOST em optaSecrets.h; aquisicao continua.");
 
   for (;;) {
     uint32_t now = millis();
@@ -158,10 +158,10 @@ void networkTask() {
 }
 
 void telemetryBegin() {
-  if (networkThread.start(networkTask) != osOK) Serial.println("[TELEMETRIA] ERRO ao iniciar tarefa de rede; controle local continua.");
+  if (networkThread.start(networkTask) != osOK) Serial.println("[TELEMETRIA] ERRO ao iniciar telemetria; aquisicao continua.");
 }
 
-void telemetryPublish(const MesaSnapshot& snapshot) {
-  // Only bounded copies under the mutex; the controller never performs I/O.
+void telemetryPublish(const CncSnapshot& snapshot) {
+  // Only bounded copies under the mutex; acquisition never performs I/O.
   snapshotMutex.lock(); telemetry.enqueue(snapshot); snapshotMutex.unlock();
 }

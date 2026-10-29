@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import queue
 import re
+import sys
 import threading
 import time
 import urllib.error
@@ -19,7 +20,7 @@ MAX_PENDING_SECONDS = 15
 
 
 class Frames:
-    """Remonta CNC_CHUNK e ignora as mensagens de diagnóstico da mesa."""
+    """Remonta quadros JSON da aquisição CNC pela serial."""
     def __init__(self):
         self.buffer = ''
 
@@ -59,36 +60,22 @@ class Reading:
     firmware: str
     captured_at: str
     arrived: float
+    machine_id: str | None = None
 
 
 def reading_from(frame):
     if not isinstance(frame, dict):
         raise ValueError('frame deve ser objeto')
-    if 'payload' in frame:
-        if frame.get('protocol') != 1:
-            raise ValueError('protocolo USB incompatível')
-        payload = copy.deepcopy(frame['payload'])
-        sequence = integer(frame.get('sequence'), 'sequence')
-        uptime = integer(frame.get('uptime_ms'), 'uptime_ms')
-    else:
-        # Compatibilidade com o scomptec_simulador: adapta somente o contrato.
-        sequence = integer(frame.get('sequencia'), 'sequencia')
-        uptime = integer(frame.get('uptime_ms'), 'uptime_ms')
-        extra = copy.deepcopy(frame.get('extra_signals', {}))
-        counts = frame.get('contadores', {})
-        extra['mesa'] = {
-            'estado': frame.get('estado'), 'altura': frame.get('altura'),
-            'metal_memorizado': frame.get('metal'),
-            'entradas_brutas': frame.get('entradas', {}),
-            'saidas_comandadas': frame.get('saidas', {}),
-            'capturado_millis': uptime,
-            'contadores': {'total': counts.get('iniciadas', counts.get('total', 0)),
-                          **{k: counts.get(k, 0) for k in ('reto', 'queda1', 'queda2', 'falhas')}}}
-        digital = frame.get('digital_signals', {})
-        # O backend aceita apenas booleanos: desconhecido é omitido, não false.
-        payload = {'machine_active': frame.get('machine_active'), 'voltage_24v': frame.get('voltage_24v'),
-                   'digital_signals': {k:v for k,v in digital.items() if v is not None},
-                   'analog_signals': frame.get('analog_signals', {}), 'extra_signals': extra}
+    if frame.get('protocol') != 1 or 'payload' not in frame:
+        raise ValueError('protocolo USB incompatível')
+    identity = frame.get('machine_id')
+    if identity is not None:
+        if isinstance(identity, bool) or not isinstance(identity, (str, int)) or not str(identity).strip() or len(str(identity).strip()) > 36:
+            raise ValueError('machine_id inválido')
+        identity = str(identity).strip()
+    payload = copy.deepcopy(frame['payload'])
+    sequence = integer(frame.get('sequence'), 'sequence')
+    uptime = integer(frame.get('uptime_ms'), 'uptime_ms')
     if not isinstance(payload, dict) or not isinstance(payload.get('machine_active'), bool):
         raise ValueError('machine_active deve ser booleano')
     if payload.get('voltage_24v') is not None and not isinstance(payload['voltage_24v'], bool):
@@ -102,8 +89,8 @@ def reading_from(frame):
     extra['transport'] = 'usb_serial'
     extra['timestamp_source'] = 'usb_host_receive'
     extra['uptime_seconds'] = uptime // 1000
-    return Reading(payload, sequence, uptime, str(frame.get('firmware_version', 'mesa-usb-v2'))[:50],
-                   datetime.now(timezone.utc).isoformat(), time.monotonic())
+    return Reading(payload, sequence, uptime, str(frame.get('firmware_version', 'opta-monitor-usb-2.0.0'))[:50],
+                   datetime.now(timezone.utc).isoformat(), time.monotonic(), identity)
 
 
 class HttpApi:
@@ -119,10 +106,18 @@ class HttpApi:
             return json.load(response)
 
 
+class StdoutEvents:
+    def post(self, path, payload):
+        print(json.dumps(payload, ensure_ascii=False, allow_nan=False), flush=True)
+        return {'id': payload.get('event_id', 'stdout')}
+
+
 class Gateway:
-    """Cadastro existente e idempotência continuam usando as rotas da API."""
-    def __init__(self, api, mac=None, device_id=None):
+    """Adapta a aquisição para eventos de máquina; cadastro por MAC é compatibilidade."""
+    def __init__(self, api, mac=None, device_id=None, machine_id=None):
         self.api, self.mac, self.device_id = api, mac, device_id
+        self.machine_id = machine_id
+        self.use_frame_machine = not (machine_id or mac or device_id)
         self.session = str(uuid4())
         self.previous = None
         self.previous_payload = None
@@ -138,15 +133,20 @@ class Gateway:
         data['event_id'] = f'{self.session}:{reading.sequence}'
         data['timestamp'] = reading.captured_at  # Recepção USB UTC, preservada nos retries.
         data['extra_signals']['boot_id'] = self.session
+        if self.machine_id or self.use_frame_machine:
+            data = {'machine_id': self.machine_id or reading.machine_id or '1', 'states': data.get('digital_signals', {}),
+                    'event_id': data['event_id'], 'timestamp': data['timestamp']}
         self.previous_payload = copy.deepcopy(data)
         return data
 
     def send(self, reading, payload):
+        if 'machine_id' in payload:
+            return self.api.post('/events', payload)
         if not self.device_id:
             result = self.api.post('/devices/register', {'mac_address':self.mac, 'ip_address':None,
                                                         'firmware_version':reading.firmware})
             self.device_id = str(UUID(result['device']['id']))
-            print('Opta cadastrado:', self.device_id, flush=True)
+            print('Coletor cadastrado:', self.device_id, file=sys.stderr, flush=True)
         return self.api.post(f'/devices/{self.device_id}/telemetry', payload)
 
 
@@ -161,16 +161,20 @@ def sender(gateway, pending, stop):
         while not stop.is_set() and time.monotonic() - reading.arrived < MAX_PENDING_SECONDS:
             try:
                 result = gateway.send(reading, payload)
-                print(f'HTTP confirmado | seq={reading.sequence} | leitura={result.get("id", "ok")}', flush=True)
+                label = 'Evento emitido' if isinstance(getattr(gateway, 'api', None), StdoutEvents) else 'HTTP confirmado'
+                print(f'{label} | seq={reading.sequence} | leitura={result.get("id", "ok")}', file=sys.stderr, flush=True)
                 break
+            except BrokenPipeError:
+                stop.set()
+                return
             except urllib.error.HTTPError as error:
-                print(f'API HTTP {error.code}; confira cadastro/chave/contrato.', flush=True)
+                print(f'API HTTP {error.code}; confira cadastro/chave/contrato.', file=sys.stderr, flush=True)
                 if error.code == 404 and gateway.mac:
                     gateway.device_id = None
                 elif error.code < 500 and error.code not in (404, 408, 429):
                     break
             except (OSError, ValueError, KeyError, urllib.error.URLError):
-                print('API indisponível ou resposta inválida; repetindo a mesma leitura.', flush=True)
+                print('API indisponível ou resposta inválida; repetindo a mesma leitura.', file=sys.stderr, flush=True)
             stop.wait(backoff)
             backoff = min(backoff * 2, 4)
 
@@ -191,7 +195,7 @@ def receive(port, pending, stop):
                     reading = reading_from(frame)
                 except (ValueError, TypeError, AttributeError):
                     frames.buffer = ''
-                    print('Frame USB inválido; aguardando próximo.', flush=True)
+                    print('Frame USB inválido; aguardando próximo.', file=sys.stderr, flush=True)
                     continue
                 last_frame = time.monotonic()
                 try:
@@ -204,7 +208,7 @@ def receive(port, pending, stop):
             else:
                 line.clear(); frames.buffer = ''
         if time.monotonic() - last_frame >= 10:
-            print('Sem telemetria USB há 10s; confira firmware/cabo/porta.', flush=True)
+            print('Sem telemetria USB há 10s; confira firmware/cabo/porta.', file=sys.stderr, flush=True)
             last_frame = time.monotonic()
 
 
@@ -217,7 +221,9 @@ def main():
     parser.add_argument('--porta', '--port', help='/dev/serial/by-id/... ou /dev/ttyACM0 (Windows: COM4)')
     parser.add_argument('--listar-portas', action='store_true', help='Lista portas USB/serial e encerra')
     parser.add_argument('--api', default='http://127.0.0.1:8000/api')
+    parser.add_argument('--stdout', action='store_true', help='Emite eventos JSON Lines sem rede; usa o ID do firmware (padrão 1) ou --machine-id')
     identity = parser.add_mutually_exclusive_group()
+    identity.add_argument('--machine-id', help='Substitui o ID enviado no firmware; omitido usa o ID serial (padrão 1)')
     identity.add_argument('--mac', help='MAC real do Opta usado no cadastro existente')
     identity.add_argument('--device-id', help='UUID existente do Opta (preserva o vínculo com a CNC)')
     args = parser.parse_args()
@@ -226,8 +232,12 @@ def main():
         for port in sorted(list_ports.comports(), key=lambda port: port.device):
             print(f'{port.device} | {port.description} | serial={port.serial_number or "não informado"}')
         return
-    if not args.porta or not (args.mac or args.device_id):
-        parser.error('Informe --porta e uma identidade: --mac ou --device-id; ou use --listar-portas')
+    if not args.porta:
+        parser.error('Informe --porta; ou use --listar-portas')
+    if args.stdout and (args.mac or args.device_id):
+        parser.error('--stdout usa o ID do firmware ou --machine-id, sem cadastro de coletor')
+    if args.machine_id and (not args.machine_id.strip() or len(args.machine_id.strip()) > 36):
+        parser.error('--machine-id deve conter entre 1 e 36 caracteres')
     if args.mac and not re.fullmatch(r'[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}', args.mac):
         parser.error('--mac inválido')
     if args.device_id:
@@ -236,7 +246,8 @@ def main():
         except ValueError:
             parser.error('--device-id deve ser UUID')
     pending, stop = queue.Queue(maxsize=1), threading.Event()
-    gateway = Gateway(HttpApi(args.api, os.getenv('DEVICE_API_KEY', '')), args.mac, args.device_id)
+    api = StdoutEvents() if args.stdout else HttpApi(args.api, os.getenv('INGEST_API_KEY') or os.getenv('DEVICE_API_KEY', ''))
+    gateway = Gateway(api, args.mac, args.device_id, args.machine_id)
     worker = threading.Thread(target=sender, args=(gateway, pending, stop), daemon=True)
     worker.start()
     try:
@@ -244,13 +255,13 @@ def main():
             try:
                 with serial.Serial(args.porta, 115200, timeout=1,
                                    **({'exclusive': True} if os.name == 'posix' else {})) as port:
-                    print(f'USB {args.porta} -> {args.api}', flush=True)
+                    print(f'USB {args.porta} -> {args.api}', file=sys.stderr, flush=True)
                     receive(port, pending, stop)
             except serial.SerialException:
-                print('Porta USB indisponível; confira cabo, caminho, permissões (grupo dialout no Linux) e feche outros leitores.', flush=True)
+                print('Porta USB indisponível; confira cabo, caminho, permissões (grupo dialout no Linux) e feche outros leitores.', file=sys.stderr, flush=True)
                 stop.wait(2)
     except KeyboardInterrupt:
-        print('\nPonte encerrada.')
+        print('\nPonte encerrada.', file=sys.stderr)
     finally:
         stop.set()
         worker.join(timeout=4)

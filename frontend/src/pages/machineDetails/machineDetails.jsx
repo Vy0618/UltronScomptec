@@ -3,9 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import {
   Activity,
   ArrowLeft,
-  Cpu,
   History,
-  Radio,
   Wifi,
   WifiOff,
   Zap,
@@ -13,7 +11,6 @@ import {
   Thermometer,
   Clock,
   AlertTriangle,
-  Signal,
   TrendingUp,
   TrendingDown,
   Minus,
@@ -21,7 +18,7 @@ import {
 import StatusBadge from "../../components/statusBadge/statusBadge";
 import LoadingState from "../../components/loadingState/loadingState";
 import OperatingTimeline from "../../components/operatingTimeline/operatingTimeline";
-import MesaSignals from "../../components/mesaSignals/mesaSignals";
+import CncSignals from "../../components/cncSignals/cncSignals";
 import MachineIncidents from "../../components/machineIncidents/machineIncidents";
 import { useMachine } from "../../hooks/useMachines";
 
@@ -128,7 +125,6 @@ export default function MachineDetails() {
       </Link>
 
       {/* Main Machine Cockpit Header */}
-      <MesaSignals machine={machine} />
       <header className={`panel p-6 border-l-4 ${cfg.border} bg-gradient-to-r from-base-surface via-base-card to-base-surface`}>
         <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-start">
           <div>
@@ -137,10 +133,6 @@ export default function MachineDetails() {
                 {machine.id}
               </span>
               <span className="text-xs text-text-muted">{machine.type}</span>
-              <span className="text-text-dim">·</span>
-              <span className="text-xs text-text-muted">
-                Gateway IoT: <strong className="font-mono text-accent">{machine.deviceId}</strong>
-              </span>
             </div>
 
             <h1 className="mt-2.5 text-2xl font-extrabold text-text-primary">{machine.name}</h1>
@@ -161,7 +153,7 @@ export default function MachineDetails() {
             <div className="mt-2 flex items-center gap-2 text-xs text-text-muted">
               {disconnected ? (
                 <span className="inline-flex items-center gap-1 text-slate-400 font-medium">
-                  <WifiOff size={13} /> Gateway Offline
+                  <WifiOff size={13} /> Sem eventos recentes
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 text-accent font-medium">
@@ -183,9 +175,6 @@ export default function MachineDetails() {
             <button type="button" onClick={() => document.getElementById("ocorrencias")?.scrollIntoView({ block: "start" })} className="btn-secondary !py-1.5 !px-3 text-xs">
               <History size={14} className="text-accent" /> Histórico de Telemetria
             </button>
-            <Link to={`/dispositivos?dispositivo=${machine.deviceId}`} className="btn-secondary !py-1.5 !px-3 text-xs">
-              <Cpu size={14} className="text-accent" /> Módulo Arduino Opta WiFi
-            </Link>
           </div>
         </div>
       </header>
@@ -216,7 +205,7 @@ export default function MachineDetails() {
               <p className="mt-1 text-sm font-bold text-text-primary">{getStatusConfig(machine.lastKnownStatus).label}</p>
             </div>
             <div className="rounded-lg border border-base-border bg-base-surface/80 p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Status do Gateway</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Recepção de eventos</span>
               <p className={`mt-1 text-sm font-bold ${disconnected ? "text-slate-400" : "text-accent"}`}>
                 {disconnected ? "Offline" : "Online"}
               </p>
@@ -471,94 +460,7 @@ export default function MachineDetails() {
       {/* Realtime Operating Gantt Timeline */}
       {demoMode ? <OperatingTimeline machine={machine} /> : <p className="panel p-4 text-sm text-text-muted">Indicadores diários e linha do tempo aguardam cálculo sobre o histórico completo.</p>}
 
-      {/* Digital PLC / I/O Signals & Hardware Info */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Digital PLC / I/O Signals */}
-        <section className="panel p-5 space-y-4 lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-base-border/70 pb-3">
-            <div className="flex items-center gap-2">
-              <Radio size={16} className="text-accent" />
-              <h2 className="text-sm font-bold text-text-primary">Sinais Digitais e Ciclo (PLC)</h2>
-            </div>
-            <span className="font-mono text-[10px] text-accent bg-accent/10 px-2 py-0.5 rounded border border-accent/20">
-              CICLO {machine.digitalSignals?.ciclo === true ? "EM ANDAMENTO" : machine.digitalSignals?.ciclo === false ? "INATIVO" : "NÃO INFORMADO"}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {Object.entries(machine.digitalSignals || {}).map(([key, active]) => (
-              <div key={key} className="flex items-center justify-between rounded-lg border border-base-border bg-base-card/60 p-3">
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full transition-all ${
-                      active ? "bg-accent shadow-[0_0_8px_#10B981]" : "bg-slate-700"
-                    }`}
-                  />
-                  <span className="text-xs font-semibold text-text-primary capitalize">{key}</span>
-                </div>
-                <span
-                  className={`font-mono text-xs font-bold ${
-                    active ? "text-accent" : "text-text-dim"
-                  }`}
-                >
-                  {active ? "ATIVO" : "INATIVO"}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-t border-base-border/70 pt-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-2">
-              Transdutores e Sensores Conectados
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {machine.sensors.map((sensor) => (
-                <span
-                  key={sensor}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-accent/20 bg-accent/5 px-2.5 py-1 text-xs font-medium text-text-primary"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_4px_#10B981]" />
-                  {sensor}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Gateway Device Info */}
-        <section className="panel p-5 space-y-3">
-          <div className="flex items-center justify-between border-b border-base-border/70 pb-3">
-            <div className="flex items-center gap-2">
-              <Cpu size={16} className="text-accent" />
-              <h2 className="text-sm font-bold text-text-primary">Módulo Arduino Opta WiFi Associado</h2>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <DetailRow label="ID do Dispositivo" value={machine.deviceId} mono />
-            <DetailRow label="Versão Firmware" value={machine.firmwareVersion} mono />
-            <DetailRow
-              label="Intensidade Wi-Fi (RSSI)"
-              value={
-                <span className="inline-flex items-center gap-1.5 text-accent">
-                  <Signal size={13} /> {machine.rssi == null ? "Não informado" : `${machine.rssi} dBm`}
-                </span>
-              }
-              mono
-            />
-            <DetailRow label="Uptime Gateway" value={machine.uptimeSeconds == null ? "Não informado" : formatDuration(machine.uptimeSeconds)} mono />
-            <DetailRow
-              label="Comunicação"
-              value={
-                <span className={disconnected ? "text-slate-400 font-bold" : "text-accent font-bold"}>
-                  {disconnected ? "Offline" : "Online"}
-                </span>
-              }
-            />
-          </div>
-
-        </section>
-      </div>
+      <CncSignals machine={machine} />
 
       {/* Machine Occurrences / History Section */}
       <section id="ocorrencias" className="panel p-5 space-y-3">

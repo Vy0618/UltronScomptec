@@ -6,12 +6,13 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from database.connection import get_db
-from database.models import CNC, Device, Telemetry, TelemetryOrder, AdminIncident, User
+from database.models import CNC, AdminIncident, User
 from services.authService import get_current_user
 from schemas.cnc import CNCCreate, CNCResponse, CNCStatusResponse, CNCUpdate
 from schemas.telemetry import TelemetryHistoryResponse
 from services.clock import is_online, normalize_datetime, OFFLINE_TIMEOUT_SECONDS, MAX_CLOCK_SKEW_SECONDS
-from services.deviceService import next_code as allocate_code
+from services.codeService import next_code as allocate_code
+from services.eventRepository import event_table, ordered_query, observation, latest_event
 from services.utilization import calculate_utilization
 
 router = APIRouter(prefix="/cncs", tags=["CNC"])
@@ -32,10 +33,6 @@ def next_code(db: Session) -> str:
     return allocate_code(db, CNC, "CNC-")
 
 
-def latest_telemetry(db: Session, cnc_id: str) -> Optional[Telemetry]:
-    return db.scalars(
-        select(Telemetry).join(Device).outerjoin(TelemetryOrder).where(Device.cnc_id == cnc_id).order_by(Telemetry.timestamp.desc(), TelemetryOrder.id.desc(), Telemetry.received_at.desc()).limit(1)
-    ).first()
 
 
 @router.post("", response_model=CNCResponse, status_code=201)
@@ -78,21 +75,22 @@ def delete_cnc(cnc_id: str, db: Session = Depends(get_db)):
 @router.get("/{cnc_id}/status", response_model=CNCStatusResponse)
 def get_cnc_status(cnc_id: str, db: Session = Depends(get_db)):
     cnc = get_cnc_or_404(db, cnc_id)
-    reading = latest_telemetry(db, cnc_id)
-    device = db.scalar(select(Device).where(Device.cnc_id == cnc_id))
-    online = bool(device and is_online(device.last_seen))
+    reading = latest_event(db, cnc_id)
+    last_seen = cnc.last_seen or (reading.received_at if reading else None)
+    online = bool(reading and is_online(last_seen))
     status = cnc.status
     since = cnc.status_since
     if not online:
         status = "SEM_COMUNICACAO"
-        since = device.last_seen + timedelta(seconds=OFFLINE_TIMEOUT_SECONDS) if device and device.last_seen else cnc.created_at
+        since = last_seen + timedelta(seconds=OFFLINE_TIMEOUT_SECONDS) if last_seen else cnc.created_at
     elif not reading or not is_online(reading.timestamp, future_tolerance_seconds=MAX_CLOCK_SKEW_SECONDS):
         status = "DADOS_DESATUALIZADOS"
         since = reading.timestamp + timedelta(seconds=OFFLINE_TIMEOUT_SECONDS) if reading else cnc.created_at
     duration = int((utcnow() - since).total_seconds()) if since else 0
     return CNCStatusResponse(
         id=cnc.id, code=cnc.code, name=cnc.name, status=status,
-        status_since=since, status_duration_seconds=max(0, duration), last_seen=device.last_seen if device else None,
+        status_since=since, status_duration_seconds=max(0, duration), last_seen=last_seen,
+        online=online, states=reading.digital_signals or {} if reading else {},
         gateway_online=online, last_known_status=cnc.status,
         telemetry_timestamp=reading.timestamp if reading else None,
         telemetry_received_at=reading.received_at if reading else None,
@@ -110,13 +108,14 @@ def get_cnc_history(cnc_id: str, start: Optional[datetime] = Query(default=None)
     end = normalize_datetime(end) if end else None
     if start and end and start > end:
         raise HTTPException(status_code=422, detail="start deve ser anterior a end")
-    query = select(Telemetry).join(Device).where(Device.cnc_id == cnc_id)
+    table = event_table(cnc_id)
+    query = ordered_query(table)
     if start:
-        query = query.where(Telemetry.timestamp >= start)
+        query = query.where(table.c.timestamp >= start)
     if end:
-        query = query.where(Telemetry.timestamp <= end)
-    total = db.scalar(select(func.count()).select_from(query.subquery()))
-    items = db.scalars(query.outerjoin(TelemetryOrder).order_by(Telemetry.timestamp.desc(), TelemetryOrder.id.desc(), Telemetry.received_at.desc(), Telemetry.id).offset((page - 1) * limit).limit(limit)).all()
+        query = query.where(table.c.timestamp <= end)
+    total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
+    items = [observation(row) for row in db.execute(query.offset((page - 1) * limit).limit(limit)).all()]
     return TelemetryHistoryResponse(items=items, total=total, page=page, limit=limit)
 
 
@@ -142,9 +141,10 @@ def get_cnc_utilization(cnc_id: str, db: Session = Depends(get_db)):
     get_cnc_or_404(db, cnc_id)
     now = utcnow()
     start = now - timedelta(hours=24, seconds=OFFLINE_TIMEOUT_SECONDS)
-    readings = db.scalars(select(Telemetry).join(Device).outerjoin(TelemetryOrder).where(
-        Device.cnc_id == cnc_id, Telemetry.timestamp >= start, Telemetry.timestamp <= now,
-    ).order_by(Telemetry.timestamp, TelemetryOrder.id, Telemetry.received_at, Telemetry.id)).all()
+    table = event_table(cnc_id)
+    readings = [observation(row) for row in db.execute(ordered_query(table, descending=False).where(
+        table.c.timestamp >= start, table.c.timestamp <= now,
+    )).all()]
     return calculate_utilization(readings, now)
 
 
