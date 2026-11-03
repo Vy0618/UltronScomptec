@@ -1,4 +1,4 @@
-> **Referência consolidada:** consulte também o [README principal — autenticação e administração](../../README.md#7-autenticação-e-administração).
+> **Referência consolidada:** consulte também o [README principal — autenticação e administração](../../README.md#autenticação-e-administração).
 
 # Administração funcional
 

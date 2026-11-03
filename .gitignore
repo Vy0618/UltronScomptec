@@ -5,6 +5,10 @@
 backend/config.json
 optaSecrets.h
 
+# Documentação local de contexto para agentes
+/AGENTS.md
+/docs/CONTEXTO_PROJETO.md
+
 # Python
 .venv/
 venv/

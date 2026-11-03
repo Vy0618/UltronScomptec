@@ -1,4 +1,4 @@
-> **Registro histórico da antiga prévia:** as instruções abaixo não se aplicam à versão atual. A rota `/admin-demonstracao` foi removida; a administração agora exige login e persiste no backend. Use o [README principal — autenticação e administração](../../README.md#7-autenticação-e-administração).
+> **Registro histórico da antiga prévia:** as instruções abaixo não se aplicam à versão atual. A rota `/admin-demonstracao` foi removida; a administração agora exige login e persiste no backend. Use o [README principal — autenticação e administração](../../README.md#autenticação-e-administração).
 
 # Central administrativa (somente frontend)
 
