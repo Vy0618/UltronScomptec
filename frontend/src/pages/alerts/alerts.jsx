@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BellRing, Filter, ShieldAlert, AlertTriangle, Siren, CheckCircle2, Clock } from "lucide-react";
+import { Filter, AlertTriangle, Siren, Clock } from "lucide-react";
 import AlertCard from "../../components/alertCard/alertCard";
 import EmptyState from "../../components/emptyState/emptyState";
 import LoadingState from "../../components/loadingState/loadingState";
@@ -21,7 +21,9 @@ export default function Alerts() {
   const [companyId, setCompanyId] = useState("ALL");
   const [unitId, setUnitId] = useState("ALL");
 
-  const filteredUnits = units.filter((u) => companyId === "ALL" || u.companyId === companyId);
+  const filteredUnits = units.filter(
+    (u) => companyId === "ALL" || u.companyId === companyId,
+  );
 
   const filtered = useMemo(() => {
     return alerts.filter((a) => {
@@ -32,9 +34,11 @@ export default function Alerts() {
       const matchesUnit = unitId === "ALL" || unit?.id === unitId;
       return matchesSeverity && matchesCompany && matchesUnit;
     });
-  }, [alerts, severity, companyId, unitId]);
+  }, [alerts, severity, companyId, unitId, companies, units]);
 
-  const emergencyCount = alerts.filter((a) => a.severity === "EMERGENCIA").length;
+  const emergencyCount = alerts.filter(
+    (a) => a.severity === "EMERGENCIA",
+  ).length;
   const alarmCount = alerts.filter((a) => a.severity === "ALARME").length;
   const stoppedCount = alerts.filter((a) => a.severity === "PARADA").length;
 
@@ -52,7 +56,8 @@ export default function Alerts() {
             </span>
           </div>
           <p className="mt-1 text-xs text-text-muted">
-            Monitoramento de anomalias, emergências de segurança e paradas não programadas em tempo real.
+            Monitoramento de anomalias, emergências de segurança e paradas não
+            programadas em tempo real.
           </p>
         </div>
       </div>
@@ -61,8 +66,12 @@ export default function Alerts() {
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3">
         <div className="panel p-3.5 sm:p-4 flex items-center justify-between border-l-4 border-rose-500 bg-base-surface/60">
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">Emergências Ativas</span>
-            <p className="data-mono text-xl sm:text-2xl font-extrabold text-rose-400 mt-0.5">{emergencyCount}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">
+              Emergências Ativas
+            </span>
+            <p className="data-mono text-xl sm:text-2xl font-extrabold text-rose-400 mt-0.5">
+              {emergencyCount}
+            </p>
           </div>
           <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
             <Siren size={18} className="sm:size-5" strokeWidth={2.2} />
@@ -71,8 +80,12 @@ export default function Alerts() {
 
         <div className="panel p-3.5 sm:p-4 flex items-center justify-between border-l-4 border-amber-500 bg-base-surface/60">
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Alarmes de Operação</span>
-            <p className="data-mono text-xl sm:text-2xl font-extrabold text-amber-400 mt-0.5">{alarmCount}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+              Alarmes de Operação
+            </span>
+            <p className="data-mono text-xl sm:text-2xl font-extrabold text-amber-400 mt-0.5">
+              {alarmCount}
+            </p>
           </div>
           <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
             <AlertTriangle size={18} className="sm:size-5" strokeWidth={2.2} />
@@ -81,8 +94,12 @@ export default function Alerts() {
 
         <div className="panel p-3.5 sm:p-4 flex items-center justify-between border-l-4 border-slate-600 bg-base-surface/60">
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Paradas Registradas</span>
-            <p className="data-mono text-xl sm:text-2xl font-extrabold text-slate-300 mt-0.5">{stoppedCount}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
+              Paradas Registradas
+            </span>
+            <p className="data-mono text-xl sm:text-2xl font-extrabold text-slate-300 mt-0.5">
+              {stoppedCount}
+            </p>
           </div>
           <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-base-cardHover text-text-secondary border border-base-border">
             <Clock size={18} className="sm:size-5" strokeWidth={2.2} />
@@ -157,8 +174,16 @@ export default function Alerts() {
         <LoadingState rows={4} />
       ) : filtered.length === 0 ? (
         <EmptyState
-          title={error ? "Alertas sem confirmação atual" : "Nenhum alerta ativo encontrado"}
-          description={error ? "Aguarde a atualização da comunicação para confirmar os alertas das máquinas." : "Nenhum alerta ativo corresponde aos filtros selecionados."}
+          title={
+            error
+              ? "Alertas sem confirmação atual"
+              : "Nenhum alerta ativo encontrado"
+          }
+          description={
+            error
+              ? "Aguarde a atualização da comunicação para confirmar os alertas das máquinas."
+              : "Nenhum alerta ativo corresponde aos filtros selecionados."
+          }
         />
       ) : (
         <div className="space-y-3">
@@ -170,4 +195,3 @@ export default function Alerts() {
     </div>
   );
 }
-

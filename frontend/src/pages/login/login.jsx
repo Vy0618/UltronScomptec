@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, ArrowLeft, LogIn, Lock, Mail, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, ArrowLeft, LogIn } from "lucide-react";
 import Logo from "../../components/logo/logo";
 import api from "../../services/api";
 import { isAdminUser } from "../../services/adminSession";
@@ -28,13 +28,20 @@ export default function Login() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-base-bg px-4 py-10 relative overflow-hidden">
-      <img
-        src={`${import.meta.env.BASE_URL}loginCncBackground.png`}
-        alt=""
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
-        fetchPriority="high"
-      />
+      <picture>
+        <source
+          media="(max-width: 767px)"
+          srcSet={`${import.meta.env.BASE_URL}loginCncBackgroundMobile.webp`}
+        />
+        <img
+          src={`${import.meta.env.BASE_URL}loginCncBackground.webp`}
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover object-center"
+          fetchPriority="high"
+          decoding="async"
+        />
+      </picture>
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -56,17 +63,26 @@ export default function Login() {
             <div className="flex justify-center mb-3">
               <Logo size="md" tagline={null} />
             </div>
-            <h1 className="text-xl font-extrabold text-white">Autenticação de Operador</h1>
-            <p className="mt-1 text-xs text-text-muted">Acesse a central de telemetria e supervisão CNC.</p>
+            <h1 className="text-xl font-extrabold text-white">
+              Autenticação de Operador
+            </h1>
+            <p className="mt-1 text-xs text-text-muted">
+              Acesse a central de telemetria e supervisão CNC.
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-text-muted">
+              <label
+                htmlFor="login-email"
+                className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-text-muted"
+              >
                 E-mail Corporativo
               </label>
               <div className="relative">
                 <input
+                  id="login-email"
+                  autoComplete="username"
                   type="email"
                   required
                   value={form.email}
@@ -79,22 +95,35 @@ export default function Login() {
 
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-text-muted">Senha de Acesso</label>
-                <Link to="/recuperar-senha" className="text-xs font-semibold text-accent hover:underline">
+                <label
+                  htmlFor="login-password"
+                  className="text-xs font-bold uppercase tracking-wider text-text-muted"
+                >
+                  Senha de Acesso
+                </label>
+                <Link
+                  to="/recuperar-senha"
+                  className="text-xs font-semibold text-accent hover:underline"
+                >
                   Esqueci minha senha
                 </Link>
               </div>
               <div className="relative">
                 <input
+                  id="login-password"
+                  autoComplete="current-password"
                   type={showPassword ? "text" : "password"}
                   required
                   value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, password: e.target.value })
+                  }
                   placeholder="••••••••"
                   className="input-field pr-10 text-xs"
                 />
                 <button
                   type="button"
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                   onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
                 >
@@ -103,9 +132,15 @@ export default function Login() {
               </div>
             </div>
 
-            {error && <p className="text-xs font-semibold text-rose-400">{error}</p>}
+            {error && (
+              <p className="text-xs font-semibold text-rose-400">{error}</p>
+            )}
 
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3 mt-2 text-xs">
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full py-3 mt-2 text-xs"
+            >
               {loading ? (
                 "Validando credenciais..."
               ) : (
@@ -118,7 +153,10 @@ export default function Login() {
 
           <div className="mt-6 border-t border-base-border/70 pt-4 text-center text-xs text-text-muted">
             Não possui credencial de acesso?{" "}
-            <Link to="/registro" className="font-bold text-accent hover:underline">
+            <Link
+              to="/registro"
+              className="font-bold text-accent hover:underline"
+            >
               Criar conta
             </Link>
           </div>

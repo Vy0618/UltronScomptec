@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Activity,
@@ -11,14 +12,24 @@ import {
 import MachineCard from "../../components/machineCard/machineCard";
 import AlertCard from "../../components/alertCard/alertCard";
 import OccurrenceCard from "../../components/occurrenceCard/occurrenceCard";
-import UtilizationChart from "../../components/charts/utilizationChart";
+import DeferredHealth from "../../components/charts/deferredHealth";
 import EmptyState from "../../components/emptyState/emptyState";
 import { useMachines, useDashboardSummary } from "../../hooks/useMachines";
 import { useAlerts } from "../../hooks/useAlerts";
-import { utilizationSeries } from "../../data/mockData";
 import { useMonitoring, SCOPE_TYPES } from "../../contexts/monitoringContext";
 
-function MetricButton({ label, value, icon: Icon, tone, onClick, isPrimary = false }) {
+import api from "../../services/api";
+import { useApiQuery } from "../../hooks/useApiQuery";
+import { readingEvent } from "../../services/telemetry";
+
+function MetricButton({
+  label,
+  value,
+  icon: Icon,
+  tone,
+  onClick,
+  isPrimary = false,
+}) {
   return (
     <button
       onClick={onClick}
@@ -33,17 +44,19 @@ function MetricButton({ label, value, icon: Icon, tone, onClick, isPrimary = fal
       </div>
 
       <div className="min-w-0 flex-1">
-        <strong className={`data-mono block text-xl sm:text-2xl font-extrabold tracking-tight ${tone.text}`}>
+        <strong
+          className={`data-mono block text-xl sm:text-2xl font-extrabold tracking-tight ${tone.text}`}
+        >
           {value}
         </strong>
-        <span className="block text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">
+        <span className="block text-xs font-semibold leading-tight text-text-muted">
           {label}
         </span>
       </div>
 
       <ArrowRight
         size={14}
-        className="ml-auto text-text-muted opacity-0 transition-all duration-200 group-hover:translate-x-1 group-hover:opacity-100 group-hover:text-accent"
+        className="ml-auto hidden text-text-muted opacity-0 transition-all duration-200 group-hover:translate-x-1 group-hover:opacity-100 group-hover:text-accent xl:block"
       />
     </button>
   );
@@ -53,7 +66,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { machines } = useMachines();
   const { summary } = useDashboardSummary();
-  const { alerts, markAlertResolved } = useAlerts();
+  const { alerts } = useAlerts();
   const {
     demoMode,
     loading,
@@ -62,8 +75,26 @@ export default function Dashboard() {
     activeCompany,
     selectedScope,
     allMachines,
-    recentEvents = [],
+    companies,
+    units,
+    recentEvents: demoEvents = [],
   } = useMonitoring();
+
+  const recent = useApiQuery(
+    demoMode ? null : "recent-readings",
+    (signal) => api.getFleetHistory({ limit: 9 }, { signal }),
+    15000,
+  );
+  const recentEvents = useMemo(() => {
+    if (demoMode) return demoEvents;
+    const byId = new Map(
+      machines.map((machine) => [machine.backendId, machine]),
+    );
+    return (recent.data?.items || []).flatMap((reading) => {
+      const machine = byId.get(reading.machine_id);
+      return machine ? [readingEvent(reading, machine)] : [];
+    });
+  }, [demoMode, demoEvents, recent.data, machines]);
 
   const openStatus = (status) => {
     navigate(`/maquinas?status=${status}`);
@@ -78,7 +109,9 @@ export default function Dashboard() {
         <div>
           <div className="flex items-center gap-2">
             <span className="eyebrow text-accent">
-              {isGlobal ? "Visão Global SCOMPTEC" : `Monitoramento · ${activeCompany?.name}`}
+              {isGlobal
+                ? "Visão Global SCOMPTEC"
+                : `Monitoramento · ${activeCompany?.name}`}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent-soft px-2.5 py-0.5 text-[10px] font-bold text-accent">
               <span className="relative flex h-1.5 w-1.5">
@@ -90,7 +123,7 @@ export default function Dashboard() {
           </div>
           <p className="mt-1 text-xs text-text-muted">
             {isGlobal
-              ? "Painel centralizado consolidando todas as empresas clientes, unidades fabris e controladores CNC."
+              ? "Estados, comunicação e alertas das máquinas monitoradas."
               : `Visão operacional dedicada para ${activeCompany?.name} (${machines.length} máquinas monitoradas).`}
           </p>
         </div>
@@ -152,13 +185,17 @@ export default function Dashboard() {
             </div>
             <div>
               <span className="eyebrow text-accent">
-                {isGlobal ? "Total Geral de CNCs Monitoradas" : `Parque CNC · ${activeCompany?.name}`}
+                {isGlobal
+                  ? "Total Geral de CNCs Monitoradas"
+                  : `Parque CNC · ${activeCompany?.name}`}
               </span>
               <div className="flex items-baseline gap-2">
                 <strong className="data-mono text-2xl sm:text-3xl font-extrabold text-text-primary">
                   {summary.total}
                 </strong>
-                <span className="text-xs font-semibold text-text-muted">Máquinas Ativas</span>
+                <span className="text-xs font-semibold text-text-muted">
+                  Máquinas Ativas
+                </span>
               </div>
             </div>
           </div>
@@ -167,12 +204,15 @@ export default function Dashboard() {
             <span className="h-2 w-2 rounded-full bg-accent shadow-[0_0_8px_#10B981]" />
             <span>Taxa de Atividade:</span>
             <strong className="text-accent font-bold">
-              {summary.total > 0 ? Math.round((summary.operating / summary.total) * 100) : 0}%
+              {summary.total > 0
+                ? Math.round((summary.operating / summary.total) * 100)
+                : 0}
+              %
             </strong>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 divide-x divide-y divide-base-border/70 sm:grid-cols-5 sm:divide-y-0 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
+        <div className="grid grid-cols-2 divide-x divide-y divide-base-border/70 sm:grid-cols-3 xl:grid-cols-5 xl:divide-y-0 [&>*:last-child]:col-span-2 xl:[&>*:last-child]:col-span-1">
           <MetricButton
             label="Operando"
             value={summary.operating}
@@ -235,13 +275,15 @@ export default function Dashboard() {
       {/* Main Charts & Attention Section */}
       <div className="grid gap-6 xl:grid-cols-3">
         {/* Utilization Chart */}
-        <section className="panel p-5 xl:col-span-2 space-y-4">
+        <section className="panel order-2 p-4 sm:p-5 xl:order-1 xl:col-span-2 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-base-border/70 pb-3">
             <div>
               <h2 className="text-sm font-bold text-text-primary">
                 Alertas e Saúde das Máquinas
               </h2>
-              <p className="text-xs text-text-muted">Operação normal na base. Alarmes e emergências elevam a curva.</p>
+              <p className="text-xs text-text-muted">
+                Operação normal na base. Alarmes e emergências elevam a curva.
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <span className="rounded-md border border-accent/20 bg-accent/5 px-2 py-1 text-[10px] font-mono font-bold text-accent">
@@ -249,20 +291,30 @@ export default function Dashboard() {
               </span>
             </div>
           </div>
-          <UtilizationChart machines={machines} data={demoMode ? utilizationSeries : undefined} loading={loading} error={connectionError} />
+          <DeferredHealth
+            machines={machines}
+            demoMode={demoMode}
+            loading={loading}
+            error={connectionError}
+          />
         </section>
 
         {/* Attention Required / Active Alerts */}
-        <section className="panel p-5 flex flex-col justify-between space-y-4">
+        <section className="panel order-1 p-4 sm:p-5 xl:order-2 flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between border-b border-base-border/70 pb-3">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-text-primary">Atenção Imediata</h2>
+                <h2 className="text-sm font-bold text-text-primary">
+                  Atenção Imediata
+                </h2>
                 <span className="rounded-full bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 text-[10px] font-bold text-rose-400">
                   {alerts.length}
                 </span>
               </div>
-              <Link to="/alertas" className="text-xs font-semibold text-accent hover:underline">
+              <Link
+                to="/alertas"
+                className="text-xs font-semibold text-accent hover:underline"
+              >
                 Ver todos
               </Link>
             </div>
@@ -270,8 +322,18 @@ export default function Dashboard() {
             <div className="mt-3.5">
               {alerts.length === 0 ? (
                 <EmptyState
-                  title={loading ? "Carregando alertas" : connectionError || dataWarning ? "Alertas sem confirmação atual" : "Nenhum problema ativo"}
-                  description={loading || connectionError || dataWarning ? "Aguarde a atualização da comunicação para confirmar o estado das máquinas." : "Nenhum problema ativo identificado na última atualização."}
+                  title={
+                    loading
+                      ? "Carregando alertas"
+                      : connectionError || dataWarning
+                        ? "Alertas sem confirmação atual"
+                        : "Nenhum problema ativo"
+                  }
+                  description={
+                    loading || connectionError || dataWarning
+                      ? "Aguarde a atualização da comunicação para confirmar o estado das máquinas."
+                      : "Nenhum problema ativo identificado na última atualização."
+                  }
                 />
               ) : (
                 <div className="space-y-2.5">
@@ -297,12 +359,14 @@ export default function Dashboard() {
 
       {/* CNC Machines Fleet */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-extrabold tracking-tight text-text-primary">
               Status das Máquinas CNC
             </h2>
-            <p className="text-xs text-text-muted">Monitoramento ao vivo dos controladores e sensores</p>
+            <p className="text-xs text-text-muted">
+              Monitoramento ao vivo dos controladores e sensores
+            </p>
           </div>
           <Link
             to="/maquinas"
@@ -313,9 +377,23 @@ export default function Dashboard() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 sm:gap-5">
+        <div className="machine-grid">
           {machines.slice(0, 8).map((machine) => (
-            <MachineCard key={machine.id} machine={machine} />
+            <MachineCard
+              key={machine.id}
+              machine={machine}
+              contextLabel={
+                isGlobal
+                  ? [
+                      companies.find((item) => item.id === machine.companyId)
+                        ?.name,
+                      units.find((item) => item.id === machine.unitId)?.name,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : ""
+              }
+            />
           ))}
         </div>
       </section>
@@ -324,19 +402,27 @@ export default function Dashboard() {
       <section className="space-y-4">
         <div>
           <h2 className="text-base font-extrabold tracking-tight text-text-primary">
-            Últimas Ocorrências Registradas
+            Últimas Leituras Recebidas
           </h2>
           <p className="text-xs text-text-muted">
-            Auditoria cronológica de transições de estado, paradas e normalizações do parque.
+            Leituras persistidas mais recentes. Cada leitura representa um
+            snapshot da máquina.
           </p>
         </div>
 
+        {recent.error && (
+          <p role="status" className="text-sm text-amber-500">
+            Histórico sem atualização: {recent.error}
+          </p>
+        )}
         <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-3">
           {recentEvents.slice(0, 9).map((event) => (
             <OccurrenceCard
               key={event.id}
               event={event}
-              machine={allMachines.find((machine) => machine.id === event.machineId)}
+              machine={allMachines.find(
+                (machine) => machine.id === event.machineId,
+              )}
             />
           ))}
         </div>
@@ -344,4 +430,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

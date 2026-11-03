@@ -18,34 +18,49 @@ import Logo from "../../components/logo/logo";
 import StatusBadge from "../../components/statusBadge/statusBadge";
 import { readSessionUser } from "../../services/adminSession";
 import { useMonitoring } from "../../contexts/monitoringContext";
-import { MACHINE_STATUS, formatDuration } from "../../utils/status";
+import { MACHINE_STATUS } from "../../utils/status";
+import { Duration } from "../../components/liveTime/liveTime";
 import ClientCard from "../../components/clientCard/clientCard";
 
 const isProblem = (status) =>
-  [MACHINE_STATUS.EMERGENCIA, MACHINE_STATUS.ALARME, MACHINE_STATUS.PARADA, MACHINE_STATUS.SEM_COMUNICACAO].includes(
-    status
-  );
+  [
+    MACHINE_STATUS.EMERGENCIA,
+    MACHINE_STATUS.ALARME,
+    MACHINE_STATUS.PARADA,
+    MACHINE_STATUS.SEM_COMUNICACAO,
+    MACHINE_STATUS.DADOS_DESATUALIZADOS,
+  ].includes(status);
 
 export default function CompanySelection() {
   const navigate = useNavigate();
-  const { companies, units, alerts, allMachines: machines, selectGlobal, selectClient } = useMonitoring();
+  const {
+    companies,
+    units,
+    alerts,
+    allMachines: machines,
+    selectGlobal,
+    selectClient,
+    loading,
+    connectionError,
+    demoMode,
+  } = useMonitoring();
   const [query, setQuery] = useState("");
   const user = readSessionUser();
   const firstName = user?.name?.trim().split(/\s+/)[0] || "Operador";
   const filteredCompanies = companies.filter((company) =>
-    company.name.toLowerCase().includes(query.toLowerCase())
+    company.name.toLowerCase().includes(query.toLowerCase()),
   );
   const problems = machines
     .filter((machine) => isProblem(machine.status))
-    .sort((a, b) => b.stateMinutes - a.stateMinutes);
+    .sort((a, b) => Date.parse(a.stateSince) - Date.parse(b.stateSince));
 
   const counts = {
     machines: machines.length,
-    operating: machines.filter(m => m.status === "OPERANDO").length,
-    stopped: machines.filter(m => m.status === "PARADA").length,
-    alarm: machines.filter(m => m.status === "ALARME").length,
-    emergency: machines.filter(m => m.status === "EMERGENCIA").length,
-    offline: machines.filter(m => m.status === "SEM_COMUNICACAO").length,
+    operating: machines.filter((m) => m.status === "OPERANDO").length,
+    stopped: machines.filter((m) => m.status === "PARADA").length,
+    alarm: machines.filter((m) => m.status === "ALARME").length,
+    emergency: machines.filter((m) => m.status === "EMERGENCIA").length,
+    offline: machines.filter((m) => m.status === "SEM_COMUNICACAO").length,
   };
 
   const access = (id) => {
@@ -65,8 +80,15 @@ export default function CompanySelection() {
               <span className="absolute inline-flex h-full w-full animate-pulseRing rounded-full bg-accent" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-accent shadow-[0_0_6px_#10B981]" />
             </span>
-            <span className="hidden sm:inline">CENTRAL DE COMANDO ONLINE</span>
-            <span className="sm:hidden font-mono font-bold">100% ONLINE</span>
+            <span>
+              {demoMode
+                ? "DEMONSTRAÇÃO"
+                : loading
+                  ? "CONECTANDO"
+                  : connectionError
+                    ? "SEM CONEXÃO"
+                    : "MONITORAMENTO"}
+            </span>
           </div>
         </div>
       </header>
@@ -75,12 +97,15 @@ export default function CompanySelection() {
         {/* Welcome greeting */}
         <section className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
           <div>
-            <span className="eyebrow text-accent">Central de Operações SCOMPTEC</span>
+            <span className="eyebrow text-accent">
+              Central de Operações SCOMPTEC
+            </span>
             <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-4xl text-white">
               Bem-vindo, {firstName}.
             </h1>
             <p className="mt-1 text-xs text-text-muted">
-              Selecione um cliente para auditar o parque fabril ou acesse a visão global de telemetria.
+              Selecione um cliente para auditar o parque fabril ou acesse a
+              visão global de telemetria.
             </p>
           </div>
         </section>
@@ -94,47 +119,68 @@ export default function CompanySelection() {
               </div>
               <div>
                 <h2 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider">
-                  Visão Global SCOMPTEC (Multi-Tenant)
+                  Visão Geral SCOMPTEC
                 </h2>
                 <p className="text-[11px] sm:text-xs text-text-muted">
-                  Painel consolidado com todos os clientes, unidades e CNCs.
+                  Estados e alertas das máquinas cadastradas nesta instalação.
                 </p>
               </div>
             </div>
 
-            <button onClick={() => access("ALL")} className="btn-primary w-full sm:w-auto text-xs py-2.5 sm:py-2 justify-center">
+            <button
+              onClick={() => access("ALL")}
+              className="btn-primary w-full sm:w-auto text-xs py-2.5 sm:py-2 justify-center"
+            >
               <span>Acessar Dashboard Geral</span>
               <ArrowRight size={15} />
             </button>
           </div>
 
-          <div className="grid grid-cols-4 divide-x divide-y divide-base-border/70 sm:grid-cols-4 lg:grid-cols-8 lg:divide-y-0 bg-base-card/40">
+          <div className="grid grid-cols-2 divide-x divide-y divide-base-border/70 sm:grid-cols-4 lg:grid-cols-8 lg:divide-y-0 bg-base-card/40">
             {[
               ["Clientes", companies.length, Building2, "text-white"],
               ["Unidades", units.length, Factory, "text-white"],
               ["Máquinas", counts.machines, Cpu, "text-white"],
-              ["Operando", counts.operating, Activity, "text-accent font-extrabold"],
+              [
+                "Operando",
+                counts.operating,
+                Activity,
+                "text-accent font-extrabold",
+              ],
               ["Paradas", counts.stopped, Clock3, "text-slate-300"],
               ["Alarmes", counts.alarm, AlertTriangle, "text-amber-400"],
               ["Emergências", counts.emergency, ShieldAlert, "text-rose-400"],
               ["Offline", counts.offline, WifiOff, "text-slate-400"],
             ].map(([label, value, Icon, tone]) => (
               <div key={label} className="p-2 sm:p-4 text-center sm:text-left">
-                <Icon size={14} className={`${tone} mx-auto sm:mx-0 sm:size-4`} />
-                <p className={`data-mono mt-1 sm:mt-2.5 text-lg sm:text-2xl font-extrabold ${tone}`}>{value}</p>
-                <p className="mt-0.5 text-[8px] sm:text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">{label}</p>
+                <Icon
+                  size={14}
+                  className={`${tone} mx-auto sm:mx-0 sm:size-4`}
+                />
+                <p
+                  className={`data-mono mt-1 sm:mt-2.5 text-lg sm:text-2xl font-extrabold ${tone}`}
+                >
+                  {value}
+                </p>
+                <p className="mt-0.5 text-[8px] sm:text-[10px] font-bold uppercase tracking-wider text-text-muted truncate">
+                  {label}
+                </p>
               </div>
             ))}
           </div>
         </section>
 
         {/* 2-Column Split: Client list vs Active Critical Problems */}
-        <div className="grid gap-6 sm:gap-8 xl:grid-cols-[1.15fr_.85fr]">
+        <div className="grid grid-cols-1 gap-6 sm:gap-8 xl:grid-cols-[1.15fr_.85fr]">
           <section className="space-y-3.5">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-base sm:text-lg font-bold text-white">Clientes Industriais</h2>
-                <p className="text-xs text-text-muted">Selecione uma empresa para isolar o contexto operacional.</p>
+                <h2 className="text-base sm:text-lg font-bold text-white">
+                  Clientes Industriais
+                </h2>
+                <p className="text-xs text-text-muted">
+                  Selecione uma empresa para isolar o contexto operacional.
+                </p>
               </div>
               <span className="font-mono text-[11px] sm:text-xs text-accent font-bold bg-accent/10 border border-accent/20 px-2 sm:px-2.5 py-0.5 rounded-full">
                 {companies.length} CLIENTES
@@ -142,7 +188,10 @@ export default function CompanySelection() {
             </div>
 
             <div className="relative">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
+              <Search
+                size={14}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted"
+              />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -162,44 +211,66 @@ export default function CompanySelection() {
             <div>
               <div className="flex items-center gap-2">
                 <ShieldAlert size={17} className="text-rose-400" />
-                <h2 className="text-base sm:text-lg font-bold text-white">Atenção Prioritária</h2>
+                <h2 className="text-base sm:text-lg font-bold text-white">
+                  Atenção Prioritária
+                </h2>
               </div>
-              <p className="text-xs text-text-muted">{alerts.length} eventos críticos que exigem intervenção.</p>
+              <p className="text-xs text-text-muted">
+                {alerts.length} eventos críticos que exigem intervenção.
+              </p>
             </div>
 
             <div className="panel divide-y divide-base-border/70 overflow-hidden bg-base-surface/80">
               {problems.length === 0 ? (
                 <div className="p-8 text-center text-xs text-text-muted">
-                  <CheckCircle2 size={24} className="text-accent mx-auto mb-2" />
-                  Nenhum problema crítico ativo no momento.
+                  <CheckCircle2
+                    size={24}
+                    className="text-accent mx-auto mb-2"
+                  />
+                  {loading
+                    ? "Carregando estados das máquinas…"
+                    : connectionError
+                      ? "Aguarde a comunicação para confirmar os alertas."
+                      : "Nenhum problema crítico ativo no momento."}
                 </div>
               ) : (
                 problems.slice(0, 6).map((machine) => {
-                  const company = companies.find((c) => c.id === machine.companyId);
+                  const company = companies.find(
+                    (c) => c.id === machine.companyId,
+                  );
                   return (
                     <button
                       key={machine.id}
                       onClick={() => {
-                        selectClient(machine.companyId);
+                        if (machine.companyId) selectClient(machine.companyId);
+                        else selectGlobal();
                         navigate(`/maquinas/${machine.id}`);
                       }}
-                      className="group flex w-full items-center justify-between gap-3 p-3.5 sm:p-4 text-left transition-colors hover:bg-base-cardHover"
+                      className="group flex w-full flex-wrap items-center justify-between gap-3 p-3.5 sm:p-4 text-left transition-colors hover:bg-base-cardHover"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
                         <StatusBadge status={machine.status} size="sm" />
                         <div className="min-w-0 flex-1">
                           <span className="block truncate text-xs font-bold text-text-primary group-hover:text-accent transition-colors">
-                            <span className="font-mono text-accent">{machine.id}</span> · {machine.name}
+                            <span className="font-mono text-accent">
+                              {machine.id}
+                            </span>{" "}
+                            · {machine.name}
                           </span>
-                          <span className="block truncate text-[10px] sm:text-[11px] text-text-muted">{company?.name}</span>
+                          <span className="block truncate text-[10px] sm:text-[11px] text-text-muted">
+                            {company?.name}
+                          </span>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="data-mono text-[11px] sm:text-xs font-semibold text-text-muted">
-                          {formatDuration(machine.stateMinutes)}
+                          <Duration since={machine.stateSince} />
                         </span>
-                        <ArrowRight size={13} className="text-text-dim transition-transform group-hover:translate-x-1 group-hover:text-accent" />
+                        <ArrowRight
+                          size={13}
+                          className="text-text-dim transition-transform group-hover:translate-x-1 group-hover:text-accent"
+                        />
                       </div>
                     </button>
                   );

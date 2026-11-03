@@ -1,135 +1,49 @@
-# Responsividade da dashboard
+# Navegação e responsividade do frontend
 
-Comandos para Linux/Bash.
+O teste utiliza o build de produção e uma API interceptada no navegador, com 40 máquinas e leituras sintéticas. Não exige backend, banco de dados ou Opta. O modo de demonstração deve ficar desativado para que as consultas percorram a camada real da aplicação e sejam interceptadas pelo teste.
 
-Este teste verifica a adaptação do layout a diferentes tamanhos de tela sem depender do backend ou do Opta. O modo demonstrativo atual inicia com listas vazias; para conferir cartões e gráficos com dados, use também uma API de teste com máquinas e eventos cadastrados. Os comandos devem ser executados na raiz do projeto, com o ambiente `.venv` já criado conforme o [setup do README](../../README.md#setup).
+Execute na raiz do projeto, com as dependências instaladas conforme o [README](../../README.md#setup).
 
-**1. Preparar o frontend e o navegador de teste**
+## Preparação
 
 ```bash
 npm --prefix frontend ci
 .venv/bin/python -m pip install playwright
 .venv/bin/python -m playwright install chromium
+VITE_USE_MOCKS=false VITE_API_BASE_URL=/api npm --prefix frontend run build
 ```
 
-A instalação utiliza a biblioteca oficial [Playwright para Python](https://playwright.dev/python/docs/library).
+A dependência de navegador é opcional e não integra os requisitos de produção. O teste usa a biblioteca oficial [Playwright para Python](https://playwright.dev/python/docs/library).
 
-**2. Iniciar a dashboard no primeiro terminal**
+## Execução
+
+No primeiro terminal:
 
 ```bash
-VITE_USE_MOCKS=true npm --prefix frontend run dev -- \
-  --host 127.0.0.1 --port 5174 --strictPort
+npm --prefix frontend run preview -- --host 127.0.0.1 --port 5174 --strictPort
 ```
 
-Acesse `http://127.0.0.1:5174/dashboard`. Mantenha esse terminal aberto durante o teste. A porta 5174 precisa estar livre; `--strictPort` impede iniciar silenciosamente em outra porta.
-
-**3. Executar o teste em outro terminal, também na raiz do projeto**
-
-O script verifica celular, tablet, notebook e desktop, incluindo os pontos de mudança do layout. Salva capturas da página inteira, do menu quando disponível e um relatório JSON.
+No segundo terminal:
 
 ```bash
-.venv/bin/python - <<'PY'
-import json
-from pathlib import Path
-from playwright.sync_api import sync_playwright
-
-output = Path(".local/testes/responsividade")
-output.mkdir(parents=True, exist_ok=True)
-
-sizes = [
-    (320, 568),
-    (390, 844),
-    (639, 900),
-    (640, 900),
-    (767, 1024),
-    (768, 1024),
-    (1023, 768),
-    (1024, 768),
-    (1366, 768),
-    (1920, 1080),
-]
-
-results = []
-
-with sync_playwright() as p:
-    browser = p.chromium.launch()
-
-    for width, height in sizes:
-        context = browser.new_context(
-            viewport={"width": width, "height": height},
-            locale="pt-BR",
-            reduced_motion="reduce",
-        )
-        page = context.new_page()
-        errors = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
-
-        page.goto(
-            "http://127.0.0.1:5174/dashboard",
-            wait_until="domcontentloaded",
-        )
-        page.get_by_text(
-            "Status da Operação CNC:", exact=True
-        ).wait_for(state="visible")
-
-        page.screenshot(
-            path=str(output / f"dashboard-{width}x{height}.png"),
-            full_page=True,
-            animations="disabled",
-        )
-
-        dimensions = page.evaluate("""() => ({
-            viewport: document.documentElement.clientWidth,
-            content: Math.max(
-                document.documentElement.scrollWidth,
-                document.body.scrollWidth
-            )
-        })""")
-
-        overflow = dimensions["content"] > dimensions["viewport"] + 1
-
-        menu = page.get_by_role("button", name="Abrir menu", exact=True)
-        menu_tested = menu.is_visible()
-        if menu_tested:
-            menu.click()
-            page.screenshot(
-                path=str(output / f"menu-{width}x{height}.png"),
-                full_page=True,
-                animations="disabled",
-            )
-
-        result = {
-            "resolucao": f"{width}x{height}",
-            "rolagem_horizontal": overflow,
-            "menu_aberto_para_inspecao": menu_tested,
-            "erros_javascript": list(errors),
-            "aprovado": not overflow and not errors,
-        }
-        results.append(result)
-
-        label = "OK" if result["aprovado"] else "FALHOU"
-        print(f"{label}: {width}x{height}")
-        context.close()
-
-    browser.close()
-
-(output / "resultado.json").write_text(
-    json.dumps(results, ensure_ascii=False, indent=2),
-    encoding="utf-8",
-)
-print(f"\nCapturas e relatório: {output.resolve()}")
-raise SystemExit(0 if all(r["aprovado"] for r in results) else 1)
-PY
+.venv/bin/python tools/testarFrontend.py --url http://127.0.0.1:5174
 ```
 
-**4. Abrir as capturas e o relatório**
+Um Chromium já instalado pode ser informado com `--chromium /caminho/do/chrome`. O parâmetro `--output` permite alterar a pasta dos resultados.
 
-```bash
-xdg-open .local/testes/responsividade
-cat .local/testes/responsividade/resultado.json
-```
+O script verifica:
 
-O resultado automático identifica rolagem horizontal na página e erros JavaScript, retornando código de saída 1 se houver falha. A abertura do menu é registrada para inspeção, mas sua usabilidade não é validada automaticamente. Nas imagens, confira textos cortados, sobreposição de componentes, gráficos legíveis e acesso ao menu. Um resultado `OK` não substitui essa inspeção visual e não mede desempenho, tempo de resposta da API ou comunicação com o Opta.
+- Login sem consultas de monitoramento e listagem com uma consulta coletiva de estados.
+- Paginação de 40 máquinas, busca no cabeçalho e histórico global paginado.
+- Carregamento direto dos detalhes de uma CNC no build web.
+- Menu móvel com bloqueio da rolagem de fundo, Escape, restauração de foco e conteúdo fechado inativo.
+- Cabeçalho sem sobreposição, seletor de contexto dentro da tela e cartões sem conteúdo cortado.
+- Alertas antes dos gráficos em telas menores.
+- Ausência de rolagem horizontal na página e de erros JavaScript/console nas rotas verificadas.
+- Preservação de alertas conhecidos quando a API falha e recuperação automática.
 
-Ao terminar, encerre a instância demonstrativa com `Ctrl+C` no primeiro terminal.
+São verificadas oito rotas em 320, 390, 640, 768, 1024, 1366 e 1920 pixels de largura, mais sete rotas públicas/auxiliares em 320 e 1366 pixels (70 combinações de rota e largura), além do cenário de falha/recuperação. O processo retorna erro se uma asserção falhar. Capturas e relatório ficam em `.local/testes/frontend/`.
 
+Confira visualmente as capturas, incluindo textos, gráficos e cartões, e faça uma passagem em Android e Safari/iPhone reais, orientação horizontal e zoom. A emulação Chromium não certifica esses navegadores e não mede os Core Web Vitals em usuários reais, a latência do MySQL ou a comunicação elétrica.
+
+Ao terminar, encerre o preview com `Ctrl+C` no primeiro terminal.

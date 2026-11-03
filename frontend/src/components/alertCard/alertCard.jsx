@@ -1,13 +1,15 @@
 import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { getStatusConfig } from "../../utils/status";
-import { useRelativeDuration } from "../../hooks/useRelativeDuration";
+import { Duration } from "../liveTime/liveTime";
 
 export default function AlertCard({ alert }) {
   const cfg = getStatusConfig(alert.severity);
   const Icon = cfg.icon;
-  const startedAt = alert.occurredAt || alert.stateSince || new Date(Date.now() - (alert.minutesAgo || 0) * 60000).toISOString();
-  const duration = useRelativeDuration(startedAt);
+  const startedAt =
+    alert.occurredAt ||
+    alert.stateSince ||
+    new Date(Date.now() - (alert.minutesAgo || 0) * 60000).toISOString();
 
   return (
     <Link
@@ -21,23 +23,33 @@ export default function AlertCard({ alert }) {
       </span>
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className={`text-[10px] font-bold uppercase tracking-wider ${cfg.text}`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span
+            className={`text-[10px] font-bold uppercase tracking-wider ${cfg.text}`}
+          >
             {cfg.label}
           </span>
           <span className="font-mono text-[10px] text-text-muted">
-            {duration.formatted}
+            <Duration since={startedAt} />
           </span>
         </div>
 
         <p className="mt-0.5 truncate text-xs font-bold text-text-primary group-hover:text-accent transition-colors">
-          <span className="font-mono text-accent">{alert.machineId}</span> · {alert.machineName}
+          <span className="font-mono text-accent">{alert.machineId}</span> ·{" "}
+          {alert.machineName}
         </p>
 
-        <p className="mt-0.5 truncate text-[11px] text-text-muted">
-          {alert.companyName} · {alert.unitName}
-        </p>
-        {alert.stale && <p className="mt-1 text-[11px] text-amber-300">Último alerta conhecido. Aguarde a comunicação para confirmar o estado atual.</p>}
+        {(alert.companyName || alert.unitName) && (
+          <p className="mt-0.5 truncate text-[11px] text-text-muted">
+            {[alert.companyName, alert.unitName].filter(Boolean).join(" · ")}
+          </p>
+        )}
+        {alert.stale && (
+          <p className="mt-1 text-[11px] text-amber-300">
+            Último alerta conhecido. Aguarde a comunicação para confirmar o
+            estado atual.
+          </p>
+        )}
       </div>
 
       <ChevronRight
@@ -47,4 +59,3 @@ export default function AlertCard({ alert }) {
     </Link>
   );
 }
-

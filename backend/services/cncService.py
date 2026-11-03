@@ -12,7 +12,7 @@ from schemas.cnc import CNCCreate, CNCResponse, CNCStatusResponse, CNCUpdate
 from schemas.telemetry import TelemetryHistoryResponse
 from services.clock import is_online, normalize_datetime, OFFLINE_TIMEOUT_SECONDS, MAX_CLOCK_SKEW_SECONDS
 from services.codeService import next_code as allocate_code
-from services.eventRepository import event_table, ordered_query, observation, latest_event
+from services.eventRepository import event_table, ordered_query, observation, latest_event, latest_events
 from services.utilization import calculate_utilization
 
 router = APIRouter(prefix="/cncs", tags=["CNC"])
@@ -46,7 +46,32 @@ def create_cnc(data: CNCCreate, db: Session = Depends(get_db)):
 
 @router.get("", response_model=list[CNCResponse])
 def list_cncs(db: Session = Depends(get_db)):
-    return [cnc_response(db, cnc) for cnc in db.scalars(select(CNC).order_by(CNC.code)).all()]
+    cncs = db.scalars(select(CNC).order_by(CNC.code)).all()
+    readings = latest_events(db, [cnc.id for cnc in cncs])
+    result = []
+    for cnc in cncs:
+        current = status_response(cnc, readings.get(cnc.id))
+        result.append(CNCResponse.model_validate(cnc).model_copy(update={
+            key: getattr(current, key) for key in ("status", "status_since", "last_seen")
+        }))
+    return result
+
+
+@router.get("/statuses", response_model=list[CNCStatusResponse])
+def list_cnc_statuses(db: Session = Depends(get_db)):
+    cncs = db.scalars(select(CNC).order_by(CNC.code)).all()
+    readings = latest_events(db, [cnc.id for cnc in cncs])
+    return [status_response(cnc, readings.get(cnc.id)) for cnc in cncs]
+
+
+@router.get("/history", response_model=TelemetryHistoryResponse)
+def get_fleet_history(machine_id: Optional[str] = Query(default=None),
+                      start: Optional[datetime] = Query(default=None), end: Optional[datetime] = Query(default=None),
+                      page: int = Query(default=1, ge=1), limit: int = Query(default=50, ge=1, le=500),
+                      db: Session = Depends(get_db)):
+    if machine_id:
+        get_cnc_or_404(db, machine_id)
+    return history_response(db, machine_id, start, end, page, limit)
 
 
 @router.get("/{cnc_id}", response_model=CNCResponse)
@@ -76,6 +101,10 @@ def delete_cnc(cnc_id: str, db: Session = Depends(get_db)):
 def get_cnc_status(cnc_id: str, db: Session = Depends(get_db)):
     cnc = get_cnc_or_404(db, cnc_id)
     reading = latest_event(db, cnc_id)
+    return status_response(cnc, reading)
+
+
+def status_response(cnc, reading):
     last_seen = cnc.last_seen or (reading.received_at if reading else None)
     online = bool(reading and is_online(last_seen))
     status = cnc.status
@@ -88,7 +117,7 @@ def get_cnc_status(cnc_id: str, db: Session = Depends(get_db)):
         since = reading.timestamp + timedelta(seconds=OFFLINE_TIMEOUT_SECONDS) if reading else cnc.created_at
     duration = int((utcnow() - since).total_seconds()) if since else 0
     return CNCStatusResponse(
-        id=cnc.id, code=cnc.code, name=cnc.name, status=status,
+        id=cnc.id, code=cnc.code, name=cnc.name, description=cnc.description, status=status,
         status_since=since, status_duration_seconds=max(0, duration), last_seen=last_seen,
         online=online, states=reading.digital_signals or {} if reading else {},
         gateway_online=online, last_known_status=cnc.status,
@@ -104,6 +133,10 @@ def get_cnc_status(cnc_id: str, db: Session = Depends(get_db)):
 @router.get("/{cnc_id}/history", response_model=TelemetryHistoryResponse)
 def get_cnc_history(cnc_id: str, start: Optional[datetime] = Query(default=None), end: Optional[datetime] = Query(default=None), page: int = Query(default=1, ge=1), limit: int = Query(default=50, ge=1, le=500), db: Session = Depends(get_db)):
     get_cnc_or_404(db, cnc_id)
+    return history_response(db, cnc_id, start, end, page, limit)
+
+
+def history_response(db, cnc_id, start, end, page, limit):
     start = normalize_datetime(start) if start else None
     end = normalize_datetime(end) if end else None
     if start and end and start > end:

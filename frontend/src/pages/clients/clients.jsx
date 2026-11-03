@@ -1,11 +1,10 @@
-
 import ClientCard from "../../components/clientCard/clientCard";
-import { Building2, ShieldCheck, Factory } from "lucide-react";
+
 import { useMonitoring } from "../../contexts/monitoringContext";
+import EmptyState from "../../components/emptyState/emptyState";
 
 export default function Clients() {
-  const { allMachines, companies } = useMonitoring();
-  const totalOperating = allMachines.filter((m) => m.status === "OPERANDO").length;
+  const { companies } = useMonitoring();
 
   return (
     <div className="space-y-6 animate-fadeUp">
@@ -21,12 +20,19 @@ export default function Clients() {
             </span>
           </div>
           <p className="mt-1 text-xs text-text-muted">
-            Gestão de contas corporativas, plantas industriais e situação operacional de cada cliente.
+            Gestão de contas corporativas, plantas industriais e situação
+            operacional de cada cliente.
           </p>
         </div>
       </div>
 
       {/* Grid of Clients */}
+      {companies.length === 0 && (
+        <EmptyState
+          title="Gestão de clientes indisponível"
+          description="Esta instalação monitora máquinas diretamente. Acesse Máquinas CNC para acompanhar os equipamentos cadastrados."
+        />
+      )}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {companies.map((company) => (
           <ClientCard key={company.id} company={company} />
@@ -35,4 +41,3 @@ export default function Clients() {
     </div>
   );
 }
-

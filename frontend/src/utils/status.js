@@ -11,10 +11,6 @@ import {
   RefreshCw,
   TriangleAlert,
   Wrench,
-  Zap,
-  Thermometer,
-  Gauge,
-  Activity,
 } from "lucide-react";
 
 export const MACHINE_STATUS = {
@@ -133,17 +129,19 @@ export function formatDuration(minutesTotal) {
 }
 
 export function getStateDurationLabel(status) {
-  return {
-    [MACHINE_STATUS.OPERANDO]: "Operando há",
-    [MACHINE_STATUS.PARADA]: "Parada há",
-    [MACHINE_STATUS.ALARME]: "Em alarme há",
-    [MACHINE_STATUS.EMERGENCIA]: "Em emergência há",
-    [MACHINE_STATUS.MANUTENCAO]: "Em manutenção há",
-    [MACHINE_STATUS.DESLIGADA]: "Desligada há",
-    [MACHINE_STATUS.SEM_COMUNICACAO]: "Sem dados há",
-    [MACHINE_STATUS.RECONNECTING]: "Reconectando há",
-    [MACHINE_STATUS.DADOS_DESATUALIZADOS]: "Última comunicação",
-  }[status] || "Neste estado há";
+  return (
+    {
+      [MACHINE_STATUS.OPERANDO]: "Operando há",
+      [MACHINE_STATUS.PARADA]: "Parada há",
+      [MACHINE_STATUS.ALARME]: "Em alarme há",
+      [MACHINE_STATUS.EMERGENCIA]: "Em emergência há",
+      [MACHINE_STATUS.MANUTENCAO]: "Em manutenção há",
+      [MACHINE_STATUS.DESLIGADA]: "Desligada há",
+      [MACHINE_STATUS.SEM_COMUNICACAO]: "Sem dados há",
+      [MACHINE_STATUS.RECONNECTING]: "Reconectando há",
+      [MACHINE_STATUS.DADOS_DESATUALIZADOS]: "Última comunicação",
+    }[status] || "Neste estado há"
+  );
 }
 
 // ----------------------------------------------------
@@ -151,7 +149,12 @@ export function getStateDurationLabel(status) {
 // ----------------------------------------------------
 
 export function evaluateCurrent(current, limit = 22, min = 10) {
-  if (current === null || current === undefined) return { status: "SEM_DADOS", label: "Sem leitura", tone: "text-text-muted" };
+  if (current === null || current === undefined)
+    return {
+      status: "SEM_DADOS",
+      label: "Sem leitura",
+      tone: "text-text-muted",
+    };
   if (current > limit) {
     return {
       status: "ACIMA_DO_LIMITE",
@@ -173,7 +176,12 @@ export function evaluateCurrent(current, limit = 22, min = 10) {
 }
 
 export function evaluateTemperature(temp, limit = 65, min = 20) {
-  if (temp === null || temp === undefined) return { status: "SEM_DADOS", label: "Sem leitura", tone: "text-text-muted" };
+  if (temp === null || temp === undefined)
+    return {
+      status: "SEM_DADOS",
+      label: "Sem leitura",
+      tone: "text-text-muted",
+    };
   if (temp > limit) {
     return {
       status: "ACIMA_DO_LIMITE",
@@ -195,8 +203,13 @@ export function evaluateTemperature(temp, limit = 65, min = 20) {
 }
 
 export function evaluatePower(powerKw, machineStatus, avg = null) {
-  if (powerKw === null || powerKw === undefined) return { status: "SEM_DADOS", label: "Sem leitura", tone: "text-text-muted" };
-  
+  if (powerKw === null || powerKw === undefined)
+    return {
+      status: "SEM_DADOS",
+      label: "Sem leitura",
+      tone: "text-text-muted",
+    };
+
   // Situação incomum: Máquina marcada como OPERANDO mas com consumo 0 kW
   if (machineStatus === MACHINE_STATUS.OPERANDO && powerKw <= 0.05) {
     return {
@@ -223,7 +236,10 @@ export function evaluatePower(powerKw, machineStatus, avg = null) {
   return {
     status: "NORMAL",
     label: "Normal",
-    message: Number.isFinite(avg) && avg > 0 ? `Consumo de ${powerKw} kW compatível com a média de ${avg} kW` : `Potência registrada: ${powerKw} kW. Média histórica indisponível.`,
+    message:
+      Number.isFinite(avg) && avg > 0
+        ? `Consumo de ${powerKw} kW compatível com a média de ${avg} kW`
+        : `Potência registrada: ${powerKw} kW. Média histórica indisponível.`,
     tone: "text-accent",
     badgeBg: "bg-accent/10 border-accent/20 text-accent",
     isUnusual: false,
@@ -231,7 +247,12 @@ export function evaluatePower(powerKw, machineStatus, avg = null) {
 }
 
 export function evaluateVoltage(voltage, min = 210, max = 230) {
-  if (voltage === null || voltage === undefined) return { status: "SEM_DADOS", label: "Sem leitura", tone: "text-text-muted" };
+  if (voltage === null || voltage === undefined)
+    return {
+      status: "SEM_DADOS",
+      label: "Sem leitura",
+      tone: "text-text-muted",
+    };
   if (voltage < min || voltage > max) {
     return {
       status: "FORA_DA_FAIXA",
@@ -254,12 +275,27 @@ export function evaluateVoltage(voltage, min = 210, max = 230) {
 
 export function getTelemetrySummary(machine) {
   if (!machine) return null;
-  const currentEval = evaluateCurrent(machine.current, machine.currentLimit || 22);
-  const tempEval = evaluateTemperature(machine.temperature, machine.temperatureLimit || 65);
-  const powerEval = evaluatePower(machine.powerKw, machine.status, machine.powerAvg);
-  const voltEval = evaluateVoltage(machine.voltage, machine.voltageMin || 210, machine.voltageMax || 230);
+  const currentEval = evaluateCurrent(
+    machine.current,
+    machine.currentLimit || 22,
+  );
+  const tempEval = evaluateTemperature(
+    machine.temperature,
+    machine.temperatureLimit || 65,
+  );
+  const powerEval = evaluatePower(
+    machine.powerKw,
+    machine.status,
+    machine.powerAvg,
+  );
+  const voltEval = evaluateVoltage(
+    machine.voltage,
+    machine.voltageMin || 210,
+    machine.voltageMax || 230,
+  );
 
-  const hasTelemetryAbnormality = currentEval.isAbnormal || tempEval.isAbnormal || voltEval.isAbnormal;
+  const hasTelemetryAbnormality =
+    currentEval.isAbnormal || tempEval.isAbnormal || voltEval.isAbnormal;
   const hasUnusualSituation = powerEval.isUnusual;
 
   return {
@@ -272,8 +308,7 @@ export function getTelemetrySummary(machine) {
     statusText: hasTelemetryAbnormality
       ? "Telemetria fora do padrão"
       : hasUnusualSituation
-      ? "Situação incomum"
-      : "Telemetria nominal",
+        ? "Situação incomum"
+        : "Telemetria nominal",
   };
 }
-

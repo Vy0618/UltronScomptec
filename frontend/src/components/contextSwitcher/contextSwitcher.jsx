@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Globe2, Search, X, Building2, Radio } from "lucide-react";
+import { Check, ChevronDown, Globe2, Search, X } from "lucide-react";
 import { useMonitoring, SCOPE_TYPES } from "../../contexts/monitoringContext";
 import { machines as baselineMachines } from "../../data/mockData";
-import { getContextSeverity, getContextStats, SEVERITY_CONFIG } from "../../utils/severity";
+import {
+  getContextSeverity,
+  getContextStats,
+  SEVERITY_CONFIG,
+} from "../../utils/severity";
 
-export default function ContextSwitcher() {
+export default function ContextSwitcher({ open, onToggle, onClose }) {
   const {
     selectedScope,
     selectedUnitId,
@@ -17,41 +21,28 @@ export default function ContextSwitcher() {
     selectClient,
     selectUnit,
     clearUnit,
-    scopeSummary,
   } = useMonitoring();
 
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const rootRef = useRef(null);
   const searchRef = useRef(null);
 
   const filtered = useMemo(
-    () => companies.filter((c) => c.name.toLowerCase().includes(query.toLowerCase())),
-    [companies, query]
+    () =>
+      companies.filter((c) =>
+        c.name.toLowerCase().includes(query.toLowerCase()),
+      ),
+    [companies, query],
   );
 
   useEffect(() => {
-    const close = (event) => {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
-    };
-    const keyboard = (event) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", keyboard);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", keyboard);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (open) setTimeout(() => searchRef.current?.focus(), 0);
+    if (!open) return undefined;
+    const timer = setTimeout(() => searchRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
   }, [open]);
 
   const choose = (callback) => {
     callback();
-    setOpen(false);
+    onClose();
     setQuery("");
   };
 
@@ -60,12 +51,13 @@ export default function ContextSwitcher() {
     : activeCompany?.name || "Todas as Empresas (Global)";
 
   return (
-    <div ref={rootRef} className="relative">
+    <div className="min-w-0 sm:max-w-64">
       <button
-        onClick={() => setOpen((value) => !value)}
+        onClick={onToggle}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className={`flex min-w-0 max-w-[200px] sm:max-w-none items-center gap-1.5 sm:gap-2.5 rounded-lg border px-2 sm:px-3 py-1 sm:py-1.5 text-left transition-all duration-200 sm:min-w-[230px] ${
+        aria-label={`Trocar contexto: ${contextLabel}`}
+        className={`flex h-11 w-11 sm:w-full min-w-0 items-center justify-center gap-2 rounded-lg border px-2 sm:px-3 text-left transition-colors ${
           open
             ? "border-accent/40 bg-base-card shadow-glowGreenSm"
             : "border-base-border bg-base-card/80 hover:border-base-borderLight hover:bg-base-card"
@@ -74,7 +66,7 @@ export default function ContextSwitcher() {
         <span className="flex h-6 w-6 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded-md bg-accent/15 text-accent ring-1 ring-accent/30">
           <Globe2 size={13} className="sm:size-[15px]" />
         </span>
-        <span className="min-w-0 flex-1">
+        <span className="hidden min-w-0 flex-1 sm:block">
           <span className="hidden sm:block text-[9px] font-bold uppercase tracking-[0.14em] text-accent/80 leading-tight">
             Escopo / Empresa
           </span>
@@ -84,7 +76,7 @@ export default function ContextSwitcher() {
         </span>
         <ChevronDown
           size={12}
-          className={`shrink-0 text-text-muted transition-transform duration-200 ${open ? "rotate-180 text-accent" : ""}`}
+          className={`hidden shrink-0 text-text-muted transition-transform duration-200 sm:block ${open ? "rotate-180 text-accent" : ""}`}
         />
       </button>
 
@@ -92,7 +84,7 @@ export default function ContextSwitcher() {
         <div
           role="dialog"
           aria-label="Trocar contexto"
-          className="absolute left-0 top-full z-50 mt-2 w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-xl border border-base-border bg-base-surface/95 shadow-panel backdrop-blur-xl animate-fadeUp"
+          className="absolute left-3 right-3 top-full z-50 mt-2 overflow-hidden rounded-xl border border-base-border bg-base-surface shadow-panel sm:right-auto sm:left-6 sm:w-[min(380px,calc(100vw-3rem))]"
         >
           {/* Search bar inside switcher */}
           <div className="flex items-center gap-2 border-b border-base-border p-3">
@@ -129,8 +121,12 @@ export default function ContextSwitcher() {
                 <Globe2 size={13} />
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block text-xs font-semibold">Todas as Empresas (Visão Global)</span>
-                <span className="text-[11px] text-text-muted">Consolidação central SCOMPTEC ({allMachines.length} CNCs)</span>
+                <span className="block text-xs font-semibold">
+                  Todas as Empresas (Visão Global)
+                </span>
+                <span className="text-[11px] text-text-muted">
+                  Consolidação central SCOMPTEC ({allMachines.length} CNCs)
+                </span>
               </span>
               {selectedScope.type === SCOPE_TYPES.GLOBAL && !selectedUnitId && (
                 <Check size={14} className="text-accent" />
@@ -138,44 +134,45 @@ export default function ContextSwitcher() {
             </button>
 
             {/* If a client is selected, show Unit filters */}
-            {selectedScope.type === SCOPE_TYPES.CLIENT && availableUnits.length > 0 && (
-              <div className="border-y border-base-border/70 my-1 py-1.5 px-2 bg-base-card/40 rounded-lg">
-                <div className="flex items-center justify-between pb-1 px-1">
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-text-muted">
-                    Filtrar por Unidade Fabril
-                  </span>
-                  {selectedUnitId && (
-                    <button
-                      onClick={clearUnit}
-                      className="text-[10px] text-accent font-semibold hover:underline"
-                    >
-                      Todas as Unidades
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {availableUnits.map((u) => {
-                    const isUnitSelected = selectedUnitId === u.id;
-                    return (
+            {selectedScope.type === SCOPE_TYPES.CLIENT &&
+              availableUnits.length > 0 && (
+                <div className="border-y border-base-border/70 my-1 py-1.5 px-2 bg-base-card/40 rounded-lg">
+                  <div className="flex items-center justify-between pb-1 px-1">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-text-muted">
+                      Filtrar por Unidade Fabril
+                    </span>
+                    {selectedUnitId && (
                       <button
-                        key={u.id}
-                        onClick={() => {
-                          if (isUnitSelected) clearUnit();
-                          else selectUnit(u.id);
-                        }}
-                        className={`text-[10px] font-semibold px-2 py-1 rounded-md border transition-all ${
-                          isUnitSelected
-                            ? "border-accent bg-accent/20 text-accent shadow-glowGreenSm"
-                            : "border-base-border bg-base-surface text-text-secondary hover:border-accent/40 hover:text-text-primary"
-                        }`}
+                        onClick={clearUnit}
+                        className="text-[10px] text-accent font-semibold hover:underline"
                       >
-                        {u.name}
+                        Todas as Unidades
                       </button>
-                    );
-                  })}
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {availableUnits.map((u) => {
+                      const isUnitSelected = selectedUnitId === u.id;
+                      return (
+                        <button
+                          key={u.id}
+                          onClick={() => {
+                            if (isUnitSelected) clearUnit();
+                            else selectUnit(u.id);
+                          }}
+                          className={`text-[10px] font-semibold px-2 py-1 rounded-md border transition-all ${
+                            isUnitSelected
+                              ? "border-accent bg-accent/20 text-accent shadow-glowGreenSm"
+                              : "border-base-border bg-base-surface text-text-secondary hover:border-accent/40 hover:text-text-primary"
+                          }`}
+                        >
+                          {u.name}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             <div className="px-3 pt-2.5 pb-1">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-text-muted">
@@ -184,11 +181,15 @@ export default function ContextSwitcher() {
             </div>
 
             {filtered.map((company) => {
-              const list = allMachines.filter((m) => m.companyId === company.id);
+              const list = allMachines.filter(
+                (m) => m.companyId === company.id,
+              );
               const stats = getContextStats(
                 company,
                 list,
-                baselineMachines.filter((machine) => machine.companyId === company.id)
+                baselineMachines.filter(
+                  (machine) => machine.companyId === company.id,
+                ),
               );
               const emergency = stats.emergencies,
                 offline = stats.offline,
@@ -196,7 +197,9 @@ export default function ContextSwitcher() {
                 alarm = stats.alarms;
               const summary = { emergency, offline, stopped, alarms: alarm };
               const severityCfg = SEVERITY_CONFIG[getContextSeverity(summary)];
-              const isSelected = selectedScope.type === SCOPE_TYPES.CLIENT && selectedScope.id === company.id;
+              const isSelected =
+                selectedScope.type === SCOPE_TYPES.CLIENT &&
+                selectedScope.id === company.id;
 
               return (
                 <button
@@ -208,15 +211,23 @@ export default function ContextSwitcher() {
                       : "hover:bg-base-cardHover border border-transparent"
                   }`}
                 >
-                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${severityCfg.dot}`} />
+                  <span
+                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${severityCfg.dot}`}
+                  />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-semibold text-text-primary">
                       {company.name}
                     </span>
                     <span className="mt-0.5 block text-[11px] text-text-muted">
-                      {company.machines} CNCs · <strong className="text-accent">{stats.machinesOperating} operando</strong>
+                      {company.machines} CNCs ·{" "}
+                      <strong className="text-accent">
+                        {stats.machinesOperating} operando
+                      </strong>
                     </span>
-                    {(emergency > 0 || alarm > 0 || stopped > 0 || offline > 0) && (
+                    {(emergency > 0 ||
+                      alarm > 0 ||
+                      stopped > 0 ||
+                      offline > 0) && (
                       <span className="mt-1 flex flex-wrap gap-1 text-[10px]">
                         {emergency > 0 && (
                           <span className="rounded bg-rose-500/15 px-1 py-0.2 font-semibold text-rose-400">
@@ -236,7 +247,9 @@ export default function ContextSwitcher() {
                       </span>
                     )}
                   </span>
-                  {isSelected && <Check size={14} className="mt-1 text-accent shrink-0" />}
+                  {isSelected && (
+                    <Check size={14} className="mt-1 text-accent shrink-0" />
+                  )}
                 </button>
               );
             })}
@@ -246,4 +259,3 @@ export default function ContextSwitcher() {
     </div>
   );
 }
-

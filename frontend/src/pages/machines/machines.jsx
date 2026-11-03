@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, TriangleAlert, X, Filter, Factory } from "lucide-react";
+import { Search, TriangleAlert, X, Factory } from "lucide-react";
 import MachineCard from "../../components/machineCard/machineCard";
 import EmptyState from "../../components/emptyState/emptyState";
 import { useMachines } from "../../hooks/useMachines";
 import { useMonitoring } from "../../contexts/monitoringContext";
 import { isActiveProblem } from "../../utils/problems";
+import Pagination from "../../components/pagination/pagination";
 
 const QUICK_FILTERS = [
   ["ALL", "Todas", "total"],
@@ -18,19 +19,26 @@ const QUICK_FILTERS = [
 
 export default function Machines() {
   const { machines } = useMachines();
-  const { scopeSummary } = useMonitoring();
+  const { scopeSummary, selectedScope, companies, units } = useMonitoring();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(searchParams.get("busca") || "");
+  const [requestedPage, setPage] = useState(1);
+  const requestedSearch = searchParams.get("busca") || "";
+  useEffect(() => {
+    setQuery(requestedSearch);
+    setPage(1);
+  }, [requestedSearch]);
   const statusFilter = searchParams.get("status") || "ALL";
   const onlyProblems = searchParams.get("problemas") === "1";
   const sectorId = searchParams.get("setor");
   const unitId = searchParams.get("unidade");
 
   const updateParams = (changes) => {
+    setPage(1);
     const next = new URLSearchParams(searchParams);
     Object.entries(changes).forEach(([key, value]) =>
-      value ? next.set(key, value) : next.delete(key)
+      value ? next.set(key, value) : next.delete(key),
     );
     setSearchParams(next);
   };
@@ -48,14 +56,19 @@ export default function Machines() {
                 machine.status === "DADOS_DESATUALIZADOS")) &&
             (!onlyProblems || isActiveProblem(machine.status)) &&
             (!sectorId || machine.sectorId === sectorId) &&
-            (!unitId || machine.unitId === unitId)
+            (!unitId || machine.unitId === unitId),
         )
         .sort((a, b) =>
           statusFilter === "PARADA"
-            ? new Date(a.stateSince).getTime() - new Date(b.stateSince).getTime()
-            : 0
+            ? new Date(a.stateSince).getTime() -
+              new Date(b.stateSince).getTime()
+            : 0,
         ),
-    [machines, query, statusFilter, onlyProblems, sectorId, unitId]
+    [machines, query, statusFilter, onlyProblems, sectorId, unitId],
+  );
+  const page = Math.min(
+    requestedPage,
+    Math.max(1, Math.ceil(filtered.length / 24)),
   );
 
   return (
@@ -67,7 +80,8 @@ export default function Machines() {
             Máquinas CNC
           </h1>
           <p className="text-xs text-text-muted">
-            {scopeSummary.total} equipamentos conectados no contexto selecionado.
+            {scopeSummary.total} equipamentos conectados no contexto
+            selecionado.
           </p>
         </div>
       </div>
@@ -76,10 +90,17 @@ export default function Machines() {
       <div className="panel p-3.5 sm:p-4 space-y-3">
         <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
+            />
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Buscar máquinas"
               placeholder="Buscar por ID, modelo ou CNC..."
               className="input-field pl-9 text-xs w-full"
             />
@@ -95,14 +116,22 @@ export default function Machines() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => updateParams({ problemas: onlyProblems ? null : "1", status: null })}
+              onClick={() =>
+                updateParams({
+                  problemas: onlyProblems ? null : "1",
+                  status: null,
+                })
+              }
               className={`inline-flex w-full sm:w-auto justify-center items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-all ${
                 onlyProblems
                   ? "border-amber-500/40 bg-amber-500/15 text-amber-400 shadow-sm"
                   : "border-base-border bg-base-card/80 text-text-secondary hover:border-base-borderLight hover:text-text-primary"
               }`}
             >
-              <TriangleAlert size={14} className={onlyProblems ? "text-amber-400" : "text-text-muted"} />
+              <TriangleAlert
+                size={14}
+                className={onlyProblems ? "text-amber-400" : "text-text-muted"}
+              />
               <span>Somente Problemas</span>
             </button>
           </div>
@@ -117,7 +146,12 @@ export default function Machines() {
             return (
               <button
                 key={value}
-                onClick={() => updateParams({ status: value === "ALL" ? null : value, problemas: null })}
+                onClick={() =>
+                  updateParams({
+                    status: value === "ALL" ? null : value,
+                    problemas: null,
+                  })
+                }
                 className={`flex shrink-0 items-center gap-1.5 sm:gap-2 rounded-lg border px-2.5 sm:px-3 py-1.5 text-xs font-medium transition-all ${
                   active
                     ? "border-accent/40 bg-accent-soft text-accent shadow-glowGreenSm font-semibold"
@@ -127,7 +161,9 @@ export default function Machines() {
                 <span>{label}</span>
                 <span
                   className={`data-mono rounded px-1.5 py-0.2 text-[10px] font-bold ${
-                    active ? "bg-accent/20 text-accent" : "bg-base-surface text-text-muted"
+                    active
+                      ? "bg-accent/20 text-accent"
+                      : "bg-base-surface text-text-muted"
                   }`}
                 >
                   {count}
@@ -161,13 +197,34 @@ export default function Machines() {
           description="Nenhuma máquina CNC corresponde aos filtros ou busca aplicados."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 sm:gap-5">
-          {filtered.map((machine) => (
-            <MachineCard key={machine.id} machine={machine} />
+        <div className="machine-grid">
+          {filtered.slice((page - 1) * 24, page * 24).map((machine) => (
+            <MachineCard
+              key={machine.id}
+              machine={machine}
+              contextLabel={
+                selectedScope.type === "global"
+                  ? [
+                      companies.find((item) => item.id === machine.companyId)
+                        ?.name,
+                      units.find((item) => item.id === machine.unitId)?.name,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : ""
+              }
+            />
           ))}
         </div>
+      )}
+      {filtered.length > 24 && (
+        <Pagination
+          page={page}
+          total={filtered.length}
+          pageSize={24}
+          onChange={setPage}
+        />
       )}
     </div>
   );
 }
-

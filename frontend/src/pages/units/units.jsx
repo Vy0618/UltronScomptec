@@ -1,27 +1,34 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { MapPin, ChevronRight, Factory, Building2, Filter } from "lucide-react";
+import { MapPin, ChevronRight, Filter } from "lucide-react";
 
 import { useMonitoring } from "../../contexts/monitoringContext";
 import { getContextSeverity, SEVERITY_CONFIG } from "../../utils/severity";
-import StatusBadge from "../../components/statusBadge/statusBadge";
+import EmptyState from "../../components/emptyState/emptyState";
 
 export default function Units() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { companies, units, sectors, allMachines, selectUnit } = useMonitoring();
-  const [companyId, setCompanyId] = useState(searchParams.get("cliente") || "ALL");
+  const { companies, units, sectors, allMachines, selectUnit } =
+    useMonitoring();
+  const [companyId, setCompanyId] = useState(
+    searchParams.get("cliente") || "ALL",
+  );
 
   useEffect(() => {
     const requested = searchParams.get("cliente");
     if (requested) setCompanyId(requested);
   }, [searchParams]);
 
-  const filteredUnits = units.filter((unit) => companyId === "ALL" || unit.companyId === companyId);
+  const filteredUnits = units.filter(
+    (unit) => companyId === "ALL" || unit.companyId === companyId,
+  );
 
   const openMachines = (unitId, sectorId) => {
     selectUnit(unitId);
-    navigate(`/maquinas?unidade=${unitId}${sectorId ? `&setor=${sectorId}` : ""}`);
+    navigate(
+      `/maquinas?unidade=${unitId}${sectorId ? `&setor=${sectorId}` : ""}`,
+    );
   };
 
   return (
@@ -38,7 +45,8 @@ export default function Units() {
             </span>
           </div>
           <p className="mt-1 text-xs text-text-muted">
-            Hierarquia de plantas e setores monitorados com agregação de severidade em tempo real.
+            Hierarquia de plantas e setores monitorados com agregação de
+            severidade em tempo real.
           </p>
         </div>
       </div>
@@ -64,10 +72,20 @@ export default function Units() {
       </div>
 
       {/* Units List */}
+      {units.length === 0 && (
+        <EmptyState
+          title="Estrutura de unidades indisponível"
+          description="Esta instalação ainda não possui cadastro de unidades e setores. As máquinas podem ser acompanhadas na visão geral."
+        />
+      )}
       <div className="space-y-4">
         {filteredUnits.map((unit) => {
-          const unitSectors = sectors.filter((sector) => sector.unitId === unit.id);
-          const unitMachines = allMachines.filter((machine) => machine.unitId === unit.id);
+          const unitSectors = sectors.filter(
+            (sector) => sector.unitId === unit.id,
+          );
+          const unitMachines = allMachines.filter(
+            (machine) => machine.unitId === unit.id,
+          );
           const severity = getContextSeverity(unitMachines);
           const cfg = SEVERITY_CONFIG[severity];
           const company = companies.find((c) => c.id === unit.companyId);
@@ -85,10 +103,14 @@ export default function Units() {
                     <MapPin size={18} strokeWidth={2.2} />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-text-primary">{unit.name}</h3>
+                    <h3 className="text-base font-bold text-text-primary">
+                      {unit.name}
+                    </h3>
                     <p className="text-xs text-text-muted">
                       {company?.name} · {unitSectors.length} setores ·{" "}
-                      <strong className="text-text-primary">{unitMachines.length} CNCs</strong>
+                      <strong className="text-text-primary">
+                        {unitMachines.length} CNCs
+                      </strong>
                     </p>
                   </div>
                 </div>
@@ -113,9 +135,14 @@ export default function Units() {
               {unitSectors.length > 0 && (
                 <div className="mt-5 grid gap-2.5 border-t border-base-border/70 pt-4 sm:grid-cols-2 lg:grid-cols-3">
                   {unitSectors.map((sector) => {
-                    const sectorMachines = unitMachines.filter((m) => m.sectorId === sector.id);
-                    const sectorCfg = SEVERITY_CONFIG[getContextSeverity(sectorMachines)];
-                    const operatingCount = sectorMachines.filter((m) => m.status === "OPERANDO").length;
+                    const sectorMachines = unitMachines.filter(
+                      (m) => m.sectorId === sector.id,
+                    );
+                    const sectorCfg =
+                      SEVERITY_CONFIG[getContextSeverity(sectorMachines)];
+                    const operatingCount = sectorMachines.filter(
+                      (m) => m.status === "OPERANDO",
+                    ).length;
 
                     return (
                       <button
@@ -125,7 +152,9 @@ export default function Units() {
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className={`h-2 w-2 shrink-0 rounded-full ${sectorCfg.dot}`} />
+                            <span
+                              className={`h-2 w-2 shrink-0 rounded-full ${sectorCfg.dot}`}
+                            />
                             <span className="truncate text-xs font-bold text-text-primary group-hover:text-accent transition-colors">
                               {sector.name}
                             </span>
@@ -151,4 +180,3 @@ export default function Units() {
     </div>
   );
 }
-

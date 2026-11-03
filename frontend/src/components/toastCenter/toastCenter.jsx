@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { CheckCircle2, Siren, X } from "lucide-react";
-import { useMonitoring } from "../../contexts/monitoringContext";
+import { useMonitoringToasts } from "../../contexts/monitoringContext";
 import { usePreferences } from "../../services/preferences";
 
 function Toast({ toast, dismiss, duration }) {
@@ -35,7 +35,8 @@ function Toast({ toast, dismiss, duration }) {
             {toast.title}
           </strong>
           <span className="mt-0.5 block truncate text-xs font-semibold text-text-secondary">
-            <span className="font-mono text-accent">{toast.machineId}</span> · {toast.machineName}
+            <span className="font-mono text-accent">{toast.machineId}</span> ·{" "}
+            {toast.machineName}
           </span>
           <span
             className={`mt-1 block text-[10px] font-medium ${
@@ -59,16 +60,22 @@ function Toast({ toast, dismiss, duration }) {
 }
 
 export default function ToastCenter() {
-  const { toasts, dismissToast } = useMonitoring();
+  const { toasts, dismissToast } = useMonitoringToasts();
   const preferences = usePreferences();
   useEffect(() => {
-    if (!preferences.showToasts) toasts.forEach((toast) => dismissToast(toast.id));
+    if (!preferences.showToasts)
+      toasts.forEach((toast) => dismissToast(toast.id));
   }, [preferences.showToasts, toasts, dismissToast]);
   if (!preferences.showToasts) return null;
   return (
     <div className="fixed right-4 top-20 z-[70] space-y-3 pointer-events-auto">
       {toasts.slice(0, 3).map((toast) => (
-        <Toast key={toast.id} toast={toast} dismiss={dismissToast} duration={preferences.toastDuration} />
+        <Toast
+          key={toast.id}
+          toast={toast}
+          dismiss={dismissToast}
+          duration={preferences.toastDuration}
+        />
       ))}
     </div>
   );

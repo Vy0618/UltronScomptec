@@ -17,8 +17,10 @@
   --accent: 16 185 129;
   --accent-hover: 0 245 155;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.04);
-  --shadow-card-hover: 0 10px 30px -6px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(16 185 129 / 0.28);
-  --shadow-panel: 0 14px 36px -6px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-card-hover:
+    0 10px 30px -6px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(16 185 129 / 0.28);
+  --shadow-panel:
+    0 14px 36px -6px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.06);
 }
 
 .dashboard-theme[data-theme="light"] {
@@ -36,7 +38,8 @@
   --accent: 12 115 82;
   --accent-hover: 8 96 69;
   --shadow-card: 0 1px 3px rgb(15 23 42 / 0.08);
-  --shadow-card-hover: 0 10px 24px -8px rgb(15 23 42 / 0.16), 0 0 0 1px rgb(12 115 82 / 0.2);
+  --shadow-card-hover:
+    0 10px 24px -8px rgb(15 23 42 / 0.16), 0 0 0 1px rgb(12 115 82 / 0.2);
   --shadow-panel: 0 12px 28px -8px rgb(15 23 42 / 0.16);
   color-scheme: light;
 }
@@ -69,7 +72,8 @@ body:has(.dashboard-theme[data-theme="light"])::-webkit-scrollbar-thumb {
 }
 
 .dashboard-theme[data-theme="light"] .telemetry-grid {
-  background-image: linear-gradient(to right, rgb(15 23 42 / 0.05) 1px, transparent 1px),
+  background-image:
+    linear-gradient(to right, rgb(15 23 42 / 0.05) 1px, transparent 1px),
     linear-gradient(to bottom, rgb(15 23 42 / 0.05) 1px, transparent 1px);
 }
 
@@ -110,9 +114,17 @@ body:has(.dashboard-theme[data-theme="light"])::-webkit-scrollbar-thumb {
     @apply bg-base-bg text-text-primary antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01", "ss03";
     min-width: 320px;
-    background-image: 
-      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(16, 185, 129, 0.09), transparent 60%),
-      radial-gradient(circle at 90% 20%, rgba(16, 185, 129, 0.04), transparent 35%),
+    background-image:
+      radial-gradient(
+        ellipse 80% 50% at 50% -10%,
+        rgba(16, 185, 129, 0.09),
+        transparent 60%
+      ),
+      radial-gradient(
+        circle at 90% 20%,
+        rgba(16, 185, 129, 0.04),
+        transparent 35%
+      ),
       linear-gradient(to bottom, rgba(6, 10, 17, 0.7), rgba(6, 10, 17, 1));
     background-attachment: fixed;
   }
@@ -120,7 +132,7 @@ body:has(.dashboard-theme[data-theme="light"])::-webkit-scrollbar-thumb {
     @apply bg-accent/25 text-accent-100;
   }
   :focus-visible {
-    outline: 2px solid #10B981;
+    outline: 2px solid #10b981;
     outline-offset: 2px;
   }
   ::-webkit-scrollbar {
@@ -128,27 +140,33 @@ body:has(.dashboard-theme[data-theme="light"])::-webkit-scrollbar-thumb {
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #060A11;
+    background: #060a11;
   }
   ::-webkit-scrollbar-thumb {
-    background: #19263A;
+    background: #19263a;
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #10B981;
+    background: #10b981;
   }
 }
 
 @layer components {
   .panel {
     @apply relative overflow-hidden rounded-xl border border-base-border bg-base-card shadow-card transition-all duration-200;
-    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0) 100%);
+    background-image: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.025) 0%,
+      rgba(255, 255, 255, 0) 100%
+    );
   }
 
   .panel-glow {
     @apply panel;
     border-color: rgba(16, 185, 129, 0.2);
-    box-shadow: 0 0 20px -3px rgba(16, 185, 129, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    box-shadow:
+      0 0 20px -3px rgba(16, 185, 129, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
 
   .panel-hover {
@@ -183,9 +201,33 @@ body:has(.dashboard-theme[data-theme="light"])::-webkit-scrollbar-thumb {
     @apply w-full rounded-lg border border-base-border bg-base-surface/80 px-3.5 py-2 text-sm text-text-primary placeholder:text-text-muted transition-all duration-200 hover:border-base-borderLight focus:border-accent focus:bg-base-card focus:outline-none focus:ring-1 focus:ring-accent/30;
   }
 
+  .machine-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: 1.25rem;
+  }
+
+  .history-table {
+    width: 100%;
+    min-width: 560px;
+    text-align: left;
+    font-size: 0.875rem;
+  }
+  .history-table th,
+  .history-table td {
+    padding: 0.875rem;
+    border-bottom: 1px solid rgb(var(--base-border));
+  }
+  .history-table th {
+    color: rgb(var(--text-muted));
+  }
+  .history-table td {
+    white-space: nowrap;
+  }
+
   .telemetry-grid {
     background-size: 24px 24px;
-    background-image: 
+    background-image:
       linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   }
@@ -205,8 +247,43 @@ body:has(.dashboard-theme[data-theme="light"])::-webkit-scrollbar-thumb {
   }
 }
 
+@media (pointer: coarse) {
+  button,
+  a.btn-primary,
+  a.btn-secondary,
+  select {
+    min-height: 44px;
+  }
+  button[aria-label] {
+    min-width: 44px;
+  }
+  input,
+  select,
+  textarea,
+  .input-field {
+    font-size: 16px !important;
+  }
+  .dashboard-theme .backdrop-blur-xl,
+  .dashboard-theme .backdrop-blur-md {
+    backdrop-filter: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .dashboard-theme main {
+    overflow-wrap: anywhere;
+  }
+  .dashboard-theme .text-\[9px\],
+  .dashboard-theme .text-\[10px\] {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;

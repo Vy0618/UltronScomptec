@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useLocation } from "react-router-dom";
 import {
   companies,
   machines as mockMachines,
@@ -10,9 +18,19 @@ import {
 } from "../data/mockData";
 import { monitoringEvents } from "../services/eventBus";
 import api, { USE_MOCKS } from "../services/api";
-import { readingEvent, markStale, startPolling } from "../services/telemetry";
-import { monitoringAlerts, monitoringTransitions, monitoringWarning } from "../services/monitoring";
-import { getStatusConfig, MACHINE_STATUS, evaluateCurrent, evaluateTemperature, evaluatePower } from "../utils/status";
+import { markStale, startPolling } from "../services/telemetry";
+import {
+  monitoringAlerts,
+  monitoringTransitions,
+  monitoringWarning,
+} from "../services/monitoring";
+import {
+  getStatusConfig,
+  MACHINE_STATUS,
+  evaluateCurrent,
+  evaluateTemperature,
+  evaluatePower,
+} from "../utils/status";
 import { isActiveProblem, sortActiveProblems } from "../utils/problems";
 
 export const SCOPE_TYPES = Object.freeze({
@@ -22,9 +40,12 @@ export const SCOPE_TYPES = Object.freeze({
 });
 
 const MonitoringContext = createContext(null);
+const ToastContext = createContext(null);
 
-const nowMinusMinutes = (minutes) => new Date(Date.now() - minutes * 60000).toISOString();
-const nowMinusSeconds = (seconds) => new Date(Date.now() - seconds * 1000).toISOString();
+const nowMinusMinutes = (minutes) =>
+  new Date(Date.now() - minutes * 60000).toISOString();
+const nowMinusSeconds = (seconds) =>
+  new Date(Date.now() - seconds * 1000).toISOString();
 
 function generateInitialTelemetryBuffer(baseMachine) {
   const current = baseMachine.current ?? 12.0;
@@ -34,17 +55,20 @@ function generateInitialTelemetryBuffer(baseMachine) {
 
   return Array.from({ length: 12 }, (_, i) => {
     const minAgo = 11 - i;
-    const time = new Date(Date.now() - minAgo * 25000).toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    const time = new Date(Date.now() - minAgo * 25000).toLocaleTimeString(
+      "pt-BR",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      },
+    );
     return {
       time,
-      current: Number((current + (Math.sin(i * 0.8) * 0.4)).toFixed(1)),
+      current: Number((current + Math.sin(i * 0.8) * 0.4).toFixed(1)),
       voltage: Math.round(voltage + Math.cos(i * 0.5)),
-      temperature: Number((temp + (Math.sin(i * 0.4) * 0.6)).toFixed(1)),
-      powerKw: Number((power + (Math.sin(i * 0.7) * 0.2)).toFixed(1)),
+      temperature: Number((temp + Math.sin(i * 0.4) * 0.6).toFixed(1)),
+      powerKw: Number((power + Math.sin(i * 0.7) * 0.2).toFixed(1)),
     };
   });
 }
@@ -85,7 +109,8 @@ const initialAlerts = initialMachines
       severity: machine.status,
       machineId: machine.id,
       machineName: machine.name,
-      companyName: companies.find((company) => company.id === machine.companyId)?.name,
+      companyName: companies.find((company) => company.id === machine.companyId)
+        ?.name,
       unitName: units.find((unit) => unit.id === machine.unitId)?.name,
       time: existing?.time || machine.lastUpdate,
       occurredAt: machine.stateSince,
@@ -98,7 +123,9 @@ const initialAlerts = initialMachines
 
 const initialEvents = mockEvents.map((event, index) => {
   const machine = initialMachines.find((item) => item.id === event.machineId);
-  const relatedAlert = initialAlerts.find((item) => item.machineId === event.machineId);
+  const relatedAlert = initialAlerts.find(
+    (item) => item.machineId === event.machineId,
+  );
   return {
     ...event,
     type: "STATE_CHANGE",
@@ -106,7 +133,8 @@ const initialEvents = mockEvents.map((event, index) => {
     occurredAt: relatedAlert?.occurredAt || nowMinusMinutes(45 + index * 12),
     machineName: machine?.name,
     companyId: machine?.companyId,
-    companyName: companies.find((company) => company.id === machine?.companyId)?.name,
+    companyName: companies.find((company) => company.id === machine?.companyId)
+      ?.name,
     unitName: units.find((unit) => unit.id === machine?.unitId)?.name,
     lastKnownStatus: machine?.lastKnownStatus,
     isActive: Boolean(relatedAlert),
@@ -124,7 +152,9 @@ function playCriticalSound() {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
     oscillator.connect(gain);
     gain.connect(ctx.destination);
-    oscillator.onended = () => { ctx.close().catch(() => {}); };
+    oscillator.onended = () => {
+      ctx.close().catch(() => {});
+    };
     oscillator.start();
     oscillator.stop(ctx.currentTime + 0.35);
   } catch {
@@ -134,16 +164,33 @@ function playCriticalSound() {
 
 export function MonitoringProvider({ children }) {
   const demoMode = USE_MOCKS;
+  const { pathname } = useLocation();
+  const enabled = ![
+    "/",
+    "/inicio",
+    "/login",
+    "/registro",
+    "/recuperar-senha",
+  ].includes(pathname);
   const [connectionError, setConnectionError] = useState(null);
   const [dataWarning, setDataWarning] = useState(null);
   const [loading, setLoading] = useState(!demoMode);
-  const [selectedScope, setSelectedScope] = useState({ type: SCOPE_TYPES.GLOBAL, id: null });
+  const [selectedScope, setSelectedScope] = useState({
+    type: SCOPE_TYPES.GLOBAL,
+    id: null,
+  });
   const [selectedUnitId, setSelectedUnitId] = useState(null);
-  const [machineState, setMachineState] = useState(demoMode ? initialMachines : []);
-  const [activeAlerts, setActiveAlerts] = useState(demoMode ? initialAlerts : []);
+  const [machineState, setMachineState] = useState(
+    demoMode ? initialMachines : [],
+  );
+  const [activeAlerts, setActiveAlerts] = useState(
+    demoMode ? initialAlerts : [],
+  );
   const [events, setEvents] = useState(demoMode ? initialEvents : []);
   const [history, setHistory] = useState(demoMode ? mockHistory : []);
-  const [notifications, setNotifications] = useState(demoMode ? mockAlerts.map((alert) => ({ ...alert, read: false })) : []);
+  const [notifications, setNotifications] = useState(
+    demoMode ? mockAlerts.map((alert) => ({ ...alert, read: false })) : [],
+  );
   const [toasts, setToasts] = useState([]);
   const [lastSync, setLastSync] = useState(null);
   const [apiConnected, setApiConnected] = useState(false);
@@ -160,44 +207,58 @@ export function MonitoringProvider({ children }) {
     setDataWarning(null);
     setApiConnected(false);
     setLoading(!demoMode);
-    if (demoMode) return undefined;
+    if (demoMode || !enabled) return undefined;
     let cachedMachines = [];
     let confirmedMachines = [];
     let cachedAlerts = [];
-    return startPolling(async isCancelled => {
-      const fresh = await api.getMachines(cachedMachines);
-      if (isCancelled()) return;
-      const transitions = monitoringTransitions(confirmedMachines, fresh);
-      confirmedMachines = transitions.confirmed;
-      cachedMachines = fresh;
-      cachedAlerts = monitoringAlerts(fresh, cachedAlerts);
-      const samples = fresh.flatMap(machine => (machine.readings || []).map(reading => readingEvent(reading, machine)))
-        .sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt));
-      setMachineState(fresh);
-      setHistory(samples);
-      setEvents(samples);
-      setActiveAlerts(cachedAlerts);
-      setDataWarning(monitoringWarning(fresh));
-      if (transitions.notices.length) {
-        setToasts(current => [...transitions.notices, ...current]);
-        setNotifications(current => [...transitions.notices.map(notice => ({ ...notice, read: false })), ...current].slice(0, 100));
-        if (transitions.notices.some(notice => notice.severity === MACHINE_STATUS.EMERGENCIA)) playCriticalSound();
-      }
-      setApiConnected(true);
-      setConnectionError(null);
-      setLoading(false);
-      setLastSync(new Date());
-    }, error => {
-      setApiConnected(false);
-      setConnectionError(error.message || 'Backend indisponível');
-      setDataWarning(null);
-      setLoading(false);
-      cachedMachines = markStale(cachedMachines);
-      cachedAlerts = monitoringAlerts(cachedMachines, cachedAlerts);
-      setMachineState(cachedMachines);
-      setActiveAlerts(cachedAlerts);
-    });
-  }, [demoMode]);
+    return startPolling(
+      async (isCancelled, signal) => {
+        const fresh = await api.getMachineStatuses(cachedMachines, { signal });
+        if (isCancelled()) return;
+        const transitions = monitoringTransitions(confirmedMachines, fresh);
+        confirmedMachines = transitions.confirmed;
+        cachedMachines = fresh;
+        cachedAlerts = monitoringAlerts(fresh, cachedAlerts);
+        setMachineState(fresh);
+        setActiveAlerts(cachedAlerts);
+        setDataWarning(monitoringWarning(fresh));
+        if (transitions.notices.length) {
+          setToasts((current) =>
+            [...transitions.notices, ...current].slice(0, 3),
+          );
+          setNotifications((current) =>
+            [
+              ...transitions.notices.map((notice) => ({
+                ...notice,
+                read: false,
+              })),
+              ...current,
+            ].slice(0, 100),
+          );
+          if (
+            transitions.notices.some(
+              (notice) => notice.severity === MACHINE_STATUS.EMERGENCIA,
+            )
+          )
+            playCriticalSound();
+        }
+        setApiConnected(true);
+        setConnectionError(null);
+        setLoading(false);
+        setLastSync(new Date());
+      },
+      (error) => {
+        setApiConnected(false);
+        setConnectionError(error.message || "Backend indisponível");
+        setDataWarning(null);
+        setLoading(false);
+        cachedMachines = markStale(cachedMachines);
+        cachedAlerts = monitoringAlerts(cachedMachines, cachedAlerts);
+        setMachineState(cachedMachines);
+        setActiveAlerts(cachedAlerts);
+      },
+    );
+  }, [demoMode, enabled]);
 
   // -------------------------------------------------------------
   // Gradual Realistic Live Telemetry Simulation Timer (3.5s interval)
@@ -207,7 +268,10 @@ export function MonitoringProvider({ children }) {
     const timer = setInterval(() => {
       setMachineState((currentMachines) =>
         currentMachines.map((m) => {
-          if (m.status === MACHINE_STATUS.SEM_COMUNICACAO || m.current === null) {
+          if (
+            m.status === MACHINE_STATUS.SEM_COMUNICACAO ||
+            m.current === null
+          ) {
             return m;
           }
 
@@ -228,9 +292,15 @@ export function MonitoringProvider({ children }) {
             deltaPower = 0;
           }
 
-          const newCurrent = Number(Math.max(0, m.current + deltaCurrent).toFixed(1));
-          const newTemp = Number(Math.max(22, (m.temperature || 35) + deltaTemp).toFixed(1));
-          const newPower = Number(Math.max(0, (m.powerKw || 3.5) + deltaPower).toFixed(1));
+          const newCurrent = Number(
+            Math.max(0, m.current + deltaCurrent).toFixed(1),
+          );
+          const newTemp = Number(
+            Math.max(22, (m.temperature || 35) + deltaTemp).toFixed(1),
+          );
+          const newPower = Number(
+            Math.max(0, (m.powerKw || 3.5) + deltaPower).toFixed(1),
+          );
           const newVoltage = Math.round(220 + (Math.random() - 0.5) * 3);
 
           const timeStr = new Date().toLocaleTimeString("pt-BR", {
@@ -239,8 +309,14 @@ export function MonitoringProvider({ children }) {
             second: "2-digit",
           });
 
-          const currentTrend = deltaCurrent > 0.08 ? "UP" : deltaCurrent < -0.08 ? "DOWN" : "STABLE";
-          const tempTrend = deltaTemp > 0.05 ? "UP" : deltaTemp < -0.05 ? "DOWN" : "STABLE";
+          const currentTrend =
+            deltaCurrent > 0.08
+              ? "UP"
+              : deltaCurrent < -0.08
+                ? "DOWN"
+                : "STABLE";
+          const tempTrend =
+            deltaTemp > 0.05 ? "UP" : deltaTemp < -0.05 ? "DOWN" : "STABLE";
 
           const newBuffer = [
             ...(m.telemetryBuffer || []).slice(-14),
@@ -264,7 +340,7 @@ export function MonitoringProvider({ children }) {
             telemetryBuffer: newBuffer,
             lastCommunicationAt: new Date().toISOString(),
           };
-        })
+        }),
       );
       setLastSync(new Date());
     }, 4000);
@@ -275,110 +351,174 @@ export function MonitoringProvider({ children }) {
   // -------------------------------------------------------------
   // Dynamic State Change Event Handler
   // -------------------------------------------------------------
-  const applyMachineEvent = useCallback((payload) => {
-    const occurredAt = payload.occurredAt || new Date().toISOString();
-    const changedMachine = machineState.find((machine) => machine.id === payload.machineId);
-    if (!changedMachine) return;
+  const applyMachineEvent = useCallback(
+    (payload) => {
+      const occurredAt = payload.occurredAt || new Date().toISOString();
+      const changedMachine = machineState.find(
+        (machine) => machine.id === payload.machineId,
+      );
+      if (!changedMachine) return;
 
-    setMachineState((current) =>
-      current.map((machine) =>
-        machine.id === payload.machineId
-          ? {
-              ...machine,
-              lastKnownStatus: machine.status,
-              status: payload.status,
-              state: payload.status,
-              stateSince: occurredAt,
-              lastCommunicationAt: occurredAt,
-              current: payload.current !== undefined ? payload.current : machine.current,
-              voltage: payload.voltage !== undefined ? payload.voltage : machine.voltage,
-              temperature: payload.temperature !== undefined ? payload.temperature : machine.temperature,
-              powerKw: payload.powerKw !== undefined ? payload.powerKw : machine.powerKw,
-              communicationStatus: payload.communicationStatus || (payload.status === MACHINE_STATUS.SEM_COMUNICACAO ? "OFFLINE" : "ONLINE"),
-              isNew: true,
-            }
-          : machine
-      )
-    );
-
-    setTimeout(
-      () =>
-        setMachineState((current) =>
-          current.map((machine) => (machine.id === payload.machineId ? { ...machine, isNew: false } : machine))
+      setMachineState((current) =>
+        current.map((machine) =>
+          machine.id === payload.machineId
+            ? {
+                ...machine,
+                lastKnownStatus: machine.status,
+                status: payload.status,
+                state: payload.status,
+                stateSince: occurredAt,
+                lastCommunicationAt: occurredAt,
+                current:
+                  payload.current !== undefined
+                    ? payload.current
+                    : machine.current,
+                voltage:
+                  payload.voltage !== undefined
+                    ? payload.voltage
+                    : machine.voltage,
+                temperature:
+                  payload.temperature !== undefined
+                    ? payload.temperature
+                    : machine.temperature,
+                powerKw:
+                  payload.powerKw !== undefined
+                    ? payload.powerKw
+                    : machine.powerKw,
+                communicationStatus:
+                  payload.communicationStatus ||
+                  (payload.status === MACHINE_STATUS.SEM_COMUNICACAO
+                    ? "OFFLINE"
+                    : "ONLINE"),
+                isNew: true,
+              }
+            : machine,
         ),
-      8000
-    );
+      );
 
-    const id = `live-${Date.now()}`;
-    const severity = payload.status;
-    const alert = {
-      id,
-      severity,
-      machineId: payload.machineId,
-      machineName: changedMachine.name,
-      companyName: companies.find((company) => company.id === changedMachine.companyId)?.name || "Cliente",
-      unitName: units.find((unit) => unit.id === changedMachine.unitId)?.name || "Unidade",
-      time: new Date(occurredAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-      occurredAt,
-      stateSince: occurredAt,
-      minutesAgo: 0,
-      critical: Boolean(payload.critical),
-      isNew: true,
-    };
+      setTimeout(
+        () =>
+          setMachineState((current) =>
+            current.map((machine) =>
+              machine.id === payload.machineId
+                ? { ...machine, isNew: false }
+                : machine,
+            ),
+          ),
+        8000,
+      );
 
-    if (isActiveProblem(payload.status)) {
-      setActiveAlerts((current) => [alert, ...current.filter((item) => item.machineId !== payload.machineId)]);
-    } else {
-      setActiveAlerts((current) => current.filter((item) => item.machineId !== payload.machineId));
-    }
+      const id = `live-${Date.now()}`;
+      const severity = payload.status;
+      const alert = {
+        id,
+        severity,
+        machineId: payload.machineId,
+        machineName: changedMachine.name,
+        companyName:
+          companies.find((company) => company.id === changedMachine.companyId)
+            ?.name || "Cliente",
+        unitName:
+          units.find((unit) => unit.id === changedMachine.unitId)?.name ||
+          "Unidade",
+        time: new Date(occurredAt).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        occurredAt,
+        stateSince: occurredAt,
+        minutesAgo: 0,
+        critical: Boolean(payload.critical),
+        isNew: true,
+      };
 
-    const wasProblem = isActiveProblem(changedMachine.status);
-    const resolved = wasProblem && !isActiveProblem(payload.status);
+      if (isActiveProblem(payload.status)) {
+        setActiveAlerts((current) => [
+          alert,
+          ...current.filter((item) => item.machineId !== payload.machineId),
+        ]);
+      } else {
+        setActiveAlerts((current) =>
+          current.filter((item) => item.machineId !== payload.machineId),
+        );
+      }
 
-    const event = {
-      id,
-      type: resolved ? "PROBLEM_RESOLVED" : "STATE_CHANGE",
-      time: new Date(occurredAt).toLocaleTimeString("pt-BR"),
-      machineId: payload.machineId,
-      machineName: changedMachine.name,
-      companyId: changedMachine.companyId,
-      companyName: alert.companyName,
-      unitName: alert.unitName,
-      status: payload.status,
-      previousStatus: changedMachine.status,
-      resolvedStatus: resolved ? changedMachine.status : null,
-      durationSeconds: resolved
-        ? Math.max(0, Math.floor((new Date(occurredAt).getTime() - new Date(changedMachine.stateSince).getTime()) / 1000))
-        : null,
-      isActive: isActiveProblem(payload.status),
-      text: resolved ? `${changedMachine.status} encerrada` : `entrou em ${payload.status}`,
-      occurredAt,
-      lastKnownStatus: changedMachine.lastKnownStatus,
-    };
+      const wasProblem = isActiveProblem(changedMachine.status);
+      const resolved = wasProblem && !isActiveProblem(payload.status);
 
-    setEvents((current) => [event, ...current]);
-    setHistory((current) => [{ id, time: alert.time, machineId: payload.machineId, status: payload.status, occurredAt }, ...current]);
-    setNotifications((current) => [{ ...alert, read: false }, ...current]);
-    setToasts((current) => [
-      {
-        ...alert,
-        title: resolved
-          ? `${getStatusConfig(changedMachine.status).label} encerrada`
-          : payload.status === MACHINE_STATUS.EMERGENCIA
-          ? "Nova emergência detectada"
-          : "Novo evento de máquina",
-        resolved,
-      },
-      ...current,
-    ]);
+      const event = {
+        id,
+        type: resolved ? "PROBLEM_RESOLVED" : "STATE_CHANGE",
+        time: new Date(occurredAt).toLocaleTimeString("pt-BR"),
+        machineId: payload.machineId,
+        machineName: changedMachine.name,
+        companyId: changedMachine.companyId,
+        companyName: alert.companyName,
+        unitName: alert.unitName,
+        status: payload.status,
+        previousStatus: changedMachine.status,
+        resolvedStatus: resolved ? changedMachine.status : null,
+        durationSeconds: resolved
+          ? Math.max(
+              0,
+              Math.floor(
+                (new Date(occurredAt).getTime() -
+                  new Date(changedMachine.stateSince).getTime()) /
+                  1000,
+              ),
+            )
+          : null,
+        isActive: isActiveProblem(payload.status),
+        text: resolved
+          ? `${changedMachine.status} encerrada`
+          : `entrou em ${payload.status}`,
+        occurredAt,
+        lastKnownStatus: changedMachine.lastKnownStatus,
+      };
 
-    setLastSync(new Date());
-    if (payload.status === MACHINE_STATUS.EMERGENCIA) playCriticalSound();
-  }, [machineState]);
+      setEvents((current) => [event, ...current]);
+      setHistory((current) => [
+        {
+          id,
+          time: alert.time,
+          machineId: payload.machineId,
+          status: payload.status,
+          occurredAt,
+        },
+        ...current,
+      ]);
+      setNotifications((current) => [{ ...alert, read: false }, ...current]);
+      setToasts((current) => [
+        {
+          ...alert,
+          title: resolved
+            ? `${getStatusConfig(changedMachine.status).label} encerrada`
+            : payload.status === MACHINE_STATUS.EMERGENCIA
+              ? "Nova emergência detectada"
+              : "Novo evento de máquina",
+          resolved,
+        },
+        ...current,
+      ]);
 
-  useEffect(() => demoMode ? monitoringEvents.on("machine:state-change", applyMachineEvent) : undefined, [applyMachineEvent, demoMode]);
+      setLastSync(new Date());
+      if (payload.status === MACHINE_STATUS.EMERGENCIA) playCriticalSound();
+    },
+    [machineState],
+  );
 
-  const dismissToast = useCallback((id) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);
+  useEffect(
+    () =>
+      demoMode
+        ? monitoringEvents.on("machine:state-change", applyMachineEvent)
+        : undefined,
+    [applyMachineEvent, demoMode],
+  );
+
+  const dismissToast = useCallback(
+    (id) => setToasts((current) => current.filter((toast) => toast.id !== id)),
+    [],
+  );
 
   const selectGlobal = useCallback(() => {
     setSelectedScope({ type: SCOPE_TYPES.GLOBAL, id: null });
@@ -401,27 +541,45 @@ export function MonitoringProvider({ children }) {
   const value = useMemo(() => {
     let visibleMachines = machineState;
     if (selectedScope.type === SCOPE_TYPES.CLIENT) {
-      visibleMachines = machineState.filter((machine) => machine.companyId === selectedScope.id);
+      visibleMachines = machineState.filter(
+        (machine) => machine.companyId === selectedScope.id,
+      );
     }
     if (selectedUnitId) {
-      visibleMachines = visibleMachines.filter((machine) => machine.unitId === selectedUnitId);
+      visibleMachines = visibleMachines.filter(
+        (machine) => machine.unitId === selectedUnitId,
+      );
     }
 
     const ids = new Set(visibleMachines.map((machine) => machine.id));
 
     const scopeSummary = {
       total: visibleMachines.length,
-      operating: visibleMachines.filter((m) => m.status === MACHINE_STATUS.OPERANDO).length,
-      stopped: visibleMachines.filter((m) => m.status === MACHINE_STATUS.PARADA).length,
-      alarms: visibleMachines.filter((m) => m.status === MACHINE_STATUS.ALARME).length,
-      emergencies: visibleMachines.filter((m) => m.status === MACHINE_STATUS.EMERGENCIA).length,
-      maintenance: visibleMachines.filter((m) => m.status === MACHINE_STATUS.MANUTENCAO).length,
+      operating: visibleMachines.filter(
+        (m) => m.status === MACHINE_STATUS.OPERANDO,
+      ).length,
+      stopped: visibleMachines.filter((m) => m.status === MACHINE_STATUS.PARADA)
+        .length,
+      alarms: visibleMachines.filter((m) => m.status === MACHINE_STATUS.ALARME)
+        .length,
+      emergencies: visibleMachines.filter(
+        (m) => m.status === MACHINE_STATUS.EMERGENCIA,
+      ).length,
+      maintenance: visibleMachines.filter(
+        (m) => m.status === MACHINE_STATUS.MANUTENCAO,
+      ).length,
       offline: visibleMachines.filter((m) =>
-        [MACHINE_STATUS.SEM_COMUNICACAO, MACHINE_STATUS.DADOS_DESATUALIZADOS].includes(m.status)
+        [
+          MACHINE_STATUS.SEM_COMUNICACAO,
+          MACHINE_STATUS.DADOS_DESATUALIZADOS,
+        ].includes(m.status),
       ).length,
       telemetryAbnormal: visibleMachines.filter((m) => {
         const curEval = evaluateCurrent(m.current, m.currentLimit || 22);
-        const tempEval = evaluateTemperature(m.temperature, m.temperatureLimit || 65);
+        const tempEval = evaluateTemperature(
+          m.temperature,
+          m.temperatureLimit || 65,
+        );
         return curEval.isAbnormal || tempEval.isAbnormal;
       }).length,
       unusualPower: visibleMachines.filter((m) => {
@@ -435,11 +593,14 @@ export function MonitoringProvider({ children }) {
         ? companies.find((company) => company.id === selectedScope.id) || null
         : null;
 
-    const activeUnit = selectedUnitId ? units.find((u) => u.id === selectedUnitId) || null : null;
+    const activeUnit = selectedUnitId
+      ? units.find((u) => u.id === selectedUnitId) || null
+      : null;
 
-    const availableUnitsForScope = selectedScope.type === SCOPE_TYPES.CLIENT
-      ? units.filter((u) => u.companyId === selectedScope.id)
-      : units;
+    const availableUnitsForScope =
+      selectedScope.type === SCOPE_TYPES.CLIENT
+        ? units.filter((u) => u.companyId === selectedScope.id)
+        : units;
 
     return {
       selectedScope,
@@ -450,17 +611,21 @@ export function MonitoringProvider({ children }) {
       companies: demoMode ? companies : [],
       units: demoMode ? units : [],
       sectors: demoMode ? sectors : [],
-      demoMode, apiConnected, connectionError, dataWarning, loading,
+      demoMode,
+      apiConnected,
+      connectionError,
+      dataWarning,
+      loading,
       machines: visibleMachines,
       allMachines: machineState,
       scopeSummary,
       allAlerts: sortActiveProblems(activeAlerts),
-      alerts: sortActiveProblems(activeAlerts.filter((alert) => ids.has(alert.machineId))),
+      alerts: sortActiveProblems(
+        activeAlerts.filter((alert) => ids.has(alert.machineId)),
+      ),
       recentEvents: events.filter((event) => ids.has(event.machineId)),
       allEvents: events,
       history: history.filter((item) => ids.has(item.machineId)),
-      notifications,
-      toasts,
       lastSync,
       selectGlobal,
       selectClient,
@@ -471,15 +636,17 @@ export function MonitoringProvider({ children }) {
       setCompanyId: (id) => (id === "ALL" ? selectGlobal() : selectClient(id)),
     };
   }, [
-    demoMode, apiConnected, connectionError, dataWarning, loading,
+    demoMode,
+    apiConnected,
+    connectionError,
+    dataWarning,
+    loading,
     selectedScope,
     selectedUnitId,
     machineState,
     activeAlerts,
     events,
     history,
-    notifications,
-    toasts,
     lastSync,
     selectGlobal,
     selectClient,
@@ -488,11 +655,26 @@ export function MonitoringProvider({ children }) {
     dismissToast,
   ]);
 
-  return <MonitoringContext.Provider value={value}>{children}</MonitoringContext.Provider>;
+  const toastValue = useMemo(
+    () => ({ toasts, notifications, dismissToast }),
+    [toasts, notifications, dismissToast],
+  );
+  return (
+    <ToastContext.Provider value={toastValue}>
+      <MonitoringContext.Provider value={value}>
+        {children}
+      </MonitoringContext.Provider>
+    </ToastContext.Provider>
+  );
 }
 
 export function useMonitoring() {
   const context = useContext(MonitoringContext);
-  if (!context) throw new Error("useMonitoring precisa estar dentro de MonitoringProvider");
+  if (!context)
+    throw new Error("useMonitoring precisa estar dentro de MonitoringProvider");
   return context;
+}
+
+export function useMonitoringToasts() {
+  return useContext(ToastContext);
 }

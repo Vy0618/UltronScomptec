@@ -1,15 +1,23 @@
-import { ArrowRight, Clock3, Building2, Factory } from "lucide-react";
+import { ArrowRight, Clock3, Building2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { machines as baselineMachines } from "../../data/mockData";
 import { useMonitoring } from "../../contexts/monitoringContext";
-import { getContextSeverity, getContextStats, SEVERITY_CONFIG } from "../../utils/severity";
+import {
+  getContextSeverity,
+  getContextStats,
+  SEVERITY_CONFIG,
+} from "../../utils/severity";
 import { formatRelativeTime } from "../../utils/time";
 
 export default function ClientCard({ company, compact = false }) {
   const navigate = useNavigate();
   const { selectClient, allMachines, allAlerts } = useMonitoring();
-  const companyMachines = allMachines.filter((machine) => machine.companyId === company.id);
-  const baseline = baselineMachines.filter((machine) => machine.companyId === company.id);
+  const companyMachines = allMachines.filter(
+    (machine) => machine.companyId === company.id,
+  );
+  const baseline = baselineMachines.filter(
+    (machine) => machine.companyId === company.id,
+  );
   const stats = getContextStats(company, companyMachines, baseline);
   const severity = getContextSeverity({
     emergencies: stats.emergencies,
@@ -18,12 +26,14 @@ export default function ClientCard({ company, compact = false }) {
     offline: stats.offline,
   });
   const cfg = SEVERITY_CONFIG[severity];
-  const latest = allAlerts.find((alert) => companyMachines.some((machine) => machine.id === alert.machineId));
+  const latest = allAlerts.find((alert) =>
+    companyMachines.some((machine) => machine.id === alert.machineId),
+  );
   const latestWhen = latest?.occurredAt
     ? formatRelativeTime(latest.occurredAt)
     : latest
-    ? `há ${latest.minutesAgo} min`
-    : null;
+      ? `há ${latest.minutesAgo} min`
+      : null;
 
   const view = () => {
     selectClient(company.id);
@@ -47,12 +57,15 @@ export default function ClientCard({ company, compact = false }) {
                 {company.name}
               </h3>
               <p className="text-xs text-text-muted">
-                {company.units} {company.units === 1 ? "unidade" : "unidades"} · {company.machines} máquinas CNC
+                {company.units} {company.units === 1 ? "unidade" : "unidades"} ·{" "}
+                {company.machines} máquinas CNC
               </p>
             </div>
           </div>
 
-          <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${cfg.border} ${cfg.bg} ${cfg.text}`}>
+          <span
+            className={`rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${cfg.border} ${cfg.bg} ${cfg.text}`}
+          >
             {severity}
           </span>
         </div>
@@ -89,17 +102,22 @@ export default function ClientCard({ company, compact = false }) {
             <p className="mt-1 text-xs text-text-secondary">
               {latest ? (
                 <>
-                  <span className="font-mono font-bold text-accent">{latest.machineId}</span> ·{" "}
+                  <span className="font-mono font-bold text-accent">
+                    {latest.machineId}
+                  </span>{" "}
+                  ·{" "}
                   {latest.severity === "EMERGENCIA"
                     ? "Emergência"
                     : latest.severity === "SEM_COMUNICACAO"
-                    ? "Sem comunicação"
-                    : latest.severity}
+                      ? "Sem comunicação"
+                      : latest.severity}
                   {" · "}
                   <span className="text-text-muted">{latestWhen}</span>
                 </>
               ) : (
-                <span className="text-text-muted">Nenhuma ocorrência crítica ativa</span>
+                <span className="text-text-muted">
+                  Nenhuma ocorrência crítica ativa
+                </span>
               )}
             </p>
           </div>
@@ -112,10 +130,12 @@ export default function ClientCard({ company, compact = false }) {
           className="btn-secondary !py-1.5 !px-3 text-xs w-full justify-between group-hover:border-accent/40"
         >
           <span>Acessar Painel do Cliente</span>
-          <ArrowRight size={13} className="text-accent transition-transform group-hover:translate-x-1" />
+          <ArrowRight
+            size={13}
+            className="text-accent transition-transform group-hover:translate-x-1"
+          />
         </button>
       </div>
     </article>
   );
 }
-

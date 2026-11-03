@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
 import {
   LayoutGrid,
   Factory,
@@ -15,20 +16,11 @@ import {
 } from "lucide-react";
 import Logo from "../logo/logo";
 import { useMonitoring } from "../../contexts/monitoringContext";
-import { clearSession, isAdminUser, readSessionUser } from "../../services/adminSession";
-
-const monitoringLinks = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutGrid },
-  { to: "/maquinas", label: "Máquinas", icon: Factory },
-  { to: "/alertas", label: "Alertas", icon: BellRing },
-  { to: "/historico", label: "Histórico", icon: History },
-];
-
-const adminLinks = [
-  { to: "/clientes", label: "Clientes", icon: Building2 },
-  { to: "/unidades", label: "Unidades", icon: MapPin },
-  { to: "/dispositivos", label: "Dispositivos", icon: Cpu },
-];
+import {
+  clearSession,
+  isAdminUser,
+  readSessionUser,
+} from "../../services/adminSession";
 
 function NavItem({ to, label, icon: Icon, onNavigate, badge }) {
   return (
@@ -52,7 +44,9 @@ function NavItem({ to, label, icon: Icon, onNavigate, badge }) {
             size={17}
             strokeWidth={isActive ? 2.3 : 1.8}
             className={`shrink-0 transition-colors ${
-              isActive ? "text-accent" : "text-text-muted group-hover:text-accent"
+              isActive
+                ? "text-accent"
+                : "text-text-muted group-hover:text-accent"
             }`}
           />
           <span className="truncate">{label}</span>
@@ -69,7 +63,55 @@ function NavItem({ to, label, icon: Icon, onNavigate, badge }) {
 
 export default function Sidebar({ open = false, onClose }) {
   const navigate = useNavigate();
-  const { scopeSummary } = useMonitoring();
+  const { scopeSummary, apiConnected, loading, demoMode, companies, units } =
+    useMonitoring();
+  const aside = useRef(null);
+  const [desktop, setDesktop] = useState(
+    () => window.matchMedia("(min-width: 1024px)").matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const resize = () => {
+      setDesktop(media.matches);
+      if (media.matches) onClose();
+    };
+    media.addEventListener("change", resize);
+    return () => media.removeEventListener("change", resize);
+  }, [onClose]);
+  useEffect(() => {
+    if (!open || desktop) return undefined;
+    const previous = document.activeElement;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    aside.current.querySelector("button")?.focus();
+    const keyboard = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+      if (event.key === "Tab") {
+        const items = [...aside.current.querySelectorAll("a, button")].filter(
+          (item) => item.getClientRects().length && !item.disabled,
+        );
+        const first = items[0];
+        const last = items.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        }
+        if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", keyboard);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener("keydown", keyboard);
+      previous?.focus();
+    };
+  }, [open, desktop, onClose]);
 
   const handleLogout = () => {
     clearSession();
@@ -86,6 +128,12 @@ export default function Sidebar({ open = false, onClose }) {
         />
       )}
       <aside
+        ref={aside}
+        id="app-navigation"
+        role={!desktop && open ? "dialog" : undefined}
+        aria-label="Navegação principal"
+        aria-modal={!desktop && open ? true : undefined}
+        inert={!desktop && !open}
         className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-base-border bg-base-surface/95 shadow-2xl backdrop-blur-xl transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:max-w-none lg:shadow-none lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -109,9 +157,16 @@ export default function Sidebar({ open = false, onClose }) {
               <span className="absolute inline-flex h-full w-full animate-pulseRing rounded-full bg-accent" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-accent shadow-[0_0_6px_#10B981]" />
             </span>
-            <span className="text-[11px] font-semibold text-accent">TELEMETRIA ATIVA</span>
+            <span className="text-[11px] font-semibold text-accent">
+              {demoMode
+                ? "DEMONSTRAÇÃO"
+                : loading
+                  ? "CONECTANDO"
+                  : apiConnected
+                    ? "MONITORAMENTO ATIVO"
+                    : "SEM CONEXÃO"}
+            </span>
           </div>
-          <span className="font-mono text-[10px] text-text-muted shrink-0">GATEWAY CNC</span>
         </div>
 
         {/* Navigation Section */}
@@ -120,26 +175,72 @@ export default function Sidebar({ open = false, onClose }) {
             <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-accent/80">
               Monitoramento
             </p>
-            <NavItem to="/dashboard" label="Dashboard Geral" icon={LayoutGrid} onNavigate={onClose} />
-            <NavItem to="/maquinas" label="Máquinas CNC" icon={Factory} onNavigate={onClose} badge={scopeSummary?.total} />
+            <NavItem
+              to="/dashboard"
+              label="Dashboard Geral"
+              icon={LayoutGrid}
+              onNavigate={onClose}
+            />
+            <NavItem
+              to="/maquinas"
+              label="Máquinas CNC"
+              icon={Factory}
+              onNavigate={onClose}
+              badge={scopeSummary?.total}
+            />
             <NavItem
               to="/alertas"
               label="Alertas"
               icon={BellRing}
               onNavigate={onClose}
-              badge={scopeSummary?.alarms + scopeSummary?.emergencies > 0 ? `${scopeSummary?.alarms + scopeSummary?.emergencies}` : null}
+              badge={
+                scopeSummary?.alarms + scopeSummary?.emergencies > 0
+                  ? `${scopeSummary?.alarms + scopeSummary?.emergencies}`
+                  : null
+              }
             />
-            <NavItem to="/historico" label="Ocorrências" icon={History} onNavigate={onClose} />
+            <NavItem
+              to="/historico"
+              label="Ocorrências"
+              icon={History}
+              onNavigate={onClose}
+            />
           </div>
 
           <div className="space-y-1">
             <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-text-muted">
               Administração & IoT
             </p>
-            {isAdminUser(readSessionUser()) && <NavItem to="/admin" label="Central administrativa" icon={ShieldCheck} onNavigate={onClose} />}
-            <NavItem to="/clientes" label="Clientes" icon={Building2} onNavigate={onClose} />
-            <NavItem to="/unidades" label="Unidades" icon={MapPin} onNavigate={onClose} />
-            <NavItem to="/dispositivos" label="Coletores opcionais" icon={Cpu} onNavigate={onClose} />
+            {isAdminUser(readSessionUser()) && (
+              <NavItem
+                to="/admin"
+                label="Central administrativa"
+                icon={ShieldCheck}
+                onNavigate={onClose}
+              />
+            )}
+            {companies.length > 0 && (
+              <NavItem
+                to="/clientes"
+                label="Clientes"
+                icon={Building2}
+                onNavigate={onClose}
+              />
+            )}
+            {units.length > 0 && (
+              <NavItem
+                to="/unidades"
+                label="Unidades"
+                icon={MapPin}
+                onNavigate={onClose}
+              />
+            )}
+            <NavItem
+              to="/dispositivos"
+              label="Coletores opcionais"
+              icon={Cpu}
+              onNavigate={onClose}
+            />
           </div>
 
           <div className="space-y-1">
@@ -152,7 +253,11 @@ export default function Sidebar({ open = false, onClose }) {
               rel="noopener noreferrer"
               className="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-base-cardHover hover:text-accent"
             >
-              <Tv size={17} strokeWidth={1.8} className="shrink-0 text-text-muted group-hover:text-accent" />
+              <Tv
+                size={17}
+                strokeWidth={1.8}
+                className="shrink-0 text-text-muted group-hover:text-accent"
+              />
               <span>Modo TV (Fábrica)</span>
               <span className="ml-auto rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold text-accent">
                 LIVE
@@ -163,7 +268,12 @@ export default function Sidebar({ open = false, onClose }) {
 
         {/* Bottom Actions */}
         <div className="space-y-1 border-t border-base-border bg-base-surface px-3 py-3">
-          <NavItem to="/configuracoes" label="Configurações" icon={Settings} onNavigate={onClose} />
+          <NavItem
+            to="/configuracoes"
+            label="Configurações"
+            icon={Settings}
+            onNavigate={onClose}
+          />
           <button
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-text-muted transition-colors hover:bg-rose-500/10 hover:text-rose-400"

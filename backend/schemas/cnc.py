@@ -33,6 +33,7 @@ class CNCStatusResponse(UTCModel):
     id: str
     code: str
     name: str
+    description: Optional[str] = None
     status: str
     status_since: Optional[datetime] = None
     status_duration_seconds: int

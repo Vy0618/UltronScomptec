@@ -1,3 +1,5 @@
+import { useMachineHistory } from "../../hooks/useMachineResources";
+import { readingEvent } from "../../services/telemetry";
 import TelemetryChart from "../../components/charts/telemetryChart";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -14,6 +16,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Radio,
 } from "lucide-react";
 import StatusBadge from "../../components/statusBadge/statusBadge";
 import LoadingState from "../../components/loadingState/loadingState";
@@ -22,25 +25,50 @@ import CncSignals from "../../components/cncSignals/cncSignals";
 import MachineIncidents from "../../components/machineIncidents/machineIncidents";
 import { useMachine } from "../../hooks/useMachines";
 
-import { useRelativeDuration } from "../../hooks/useRelativeDuration";
+import { Duration } from "../../components/liveTime/liveTime";
 import { formatDuration, formatRelativeTime } from "../../utils/time";
-import { getStateDurationLabel, getStatusConfig, MACHINE_STATUS, evaluateCurrent, evaluateTemperature, evaluatePower, getTelemetrySummary } from "../../utils/status";
+import {
+  getStateDurationLabel,
+  getStatusConfig,
+  MACHINE_STATUS,
+  getTelemetrySummary,
+} from "../../utils/status";
 import { isActiveProblem } from "../../utils/problems";
 import { useMonitoring } from "../../contexts/monitoringContext";
 
-function MetricGauge({ label, value, unit, icon: Icon, tone = "text-text-primary", subtitle, progress }) {
+function MetricGauge({
+  label,
+  value,
+  unit,
+  icon: Icon,
+  tone = "text-text-primary",
+  subtitle,
+  progress,
+}) {
   return (
     <div className="panel p-4 flex flex-col justify-between space-y-3 bg-base-surface/60 border-base-border/70 hover:border-accent/30 transition-all">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">{label}</span>
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">
+          {label}
+        </span>
         {Icon && <Icon size={15} className="text-accent" />}
       </div>
       <div>
         <div className="flex items-baseline gap-1">
-          <span className={`data-mono text-2xl font-extrabold tracking-tight ${tone}`}>{value}</span>
-          {unit && <span className="text-xs font-semibold text-text-muted">{unit}</span>}
+          <span
+            className={`data-mono text-2xl font-extrabold tracking-tight ${tone}`}
+          >
+            {value}
+          </span>
+          {unit && (
+            <span className="text-xs font-semibold text-text-muted">
+              {unit}
+            </span>
+          )}
         </div>
-        {subtitle && <p className="mt-0.5 text-[10px] text-text-dim">{subtitle}</p>}
+        {subtitle && (
+          <p className="mt-0.5 text-[10px] text-text-dim">{subtitle}</p>
+        )}
       </div>
       {progress !== undefined && (
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-base-surface border border-base-border/50">
@@ -54,28 +82,20 @@ function MetricGauge({ label, value, unit, icon: Icon, tone = "text-text-primary
   );
 }
 
-function DetailRow({ label, value, mono = false }) {
-  return (
-    <div className="flex items-center justify-between gap-4 border-b border-base-border/70 py-2.5 text-xs last:border-0">
-      <span className="text-text-muted">{label}</span>
-      <span className={`text-right font-medium text-text-primary ${mono ? "data-mono font-semibold" : ""}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
 export default function MachineDetails() {
   const { id } = useParams();
-  const { machine, loading } = useMachine(id);
+  const { machine: currentMachine, loading } = useMachine(id);
   const { allEvents, companies, sectors, units, demoMode } = useMonitoring();
-  const stateDuration = useRelativeDuration(machine?.stateSince);
+  const resources = useMachineHistory(currentMachine, demoMode);
+  const machine = resources.machine;
 
   if (loading) return <LoadingState rows={5} />;
   if (!machine) {
     return (
       <div className="panel p-12 text-center space-y-4">
-        <p className="text-sm font-semibold text-text-secondary">Máquina CNC não encontrada no sistema.</p>
+        <p className="text-sm font-semibold text-text-secondary">
+          Máquina CNC não encontrada no sistema.
+        </p>
         <Link to="/maquinas" className="btn-primary">
           <ArrowLeft size={15} /> Voltar para lista de máquinas
         </Link>
@@ -86,33 +106,49 @@ export default function MachineDetails() {
   const company = companies.find((item) => item.id === machine.companyId);
   const unit = units.find((item) => item.id === machine.unitId);
   const sector = sectors.find((item) => item.id === machine.sectorId);
-  const machineEvents = allEvents.filter((item) => item.machineId === machine.id);
+  const machineEvents = demoMode
+    ? allEvents.filter((item) => item.machineId === machine.id)
+    : (machine.readings || []).map((reading) => readingEvent(reading, machine));
   const cfg = getStatusConfig(machine.status);
   const problem = isActiveProblem(machine.status);
-  const disconnected = [MACHINE_STATUS.SEM_COMUNICACAO, MACHINE_STATUS.DADOS_DESATUALIZADOS].includes(machine.status);
+  const disconnected = [
+    MACHINE_STATUS.SEM_COMUNICACAO,
+    MACHINE_STATUS.DADOS_DESATUALIZADOS,
+  ].includes(machine.status);
   const isRunning = machine.status === MACHINE_STATUS.OPERANDO;
 
   const telemetrySummary = getTelemetrySummary(machine);
 
   const operationalTotal =
-    machine.operatingTimeToday + machine.stoppedTimeToday + machine.alarmTimeToday + machine.emergencyTimeToday;
-  const availability = operationalTotal ? Math.round((machine.operatingTimeToday / operationalTotal) * 100) : 0;
+    (machine.operatingTimeToday || 0) +
+    (machine.stoppedTimeToday || 0) +
+    (machine.alarmTimeToday || 0) +
+    (machine.emergencyTimeToday || 0);
+  const availability = operationalTotal
+    ? Math.round((machine.operatingTimeToday / operationalTotal) * 100)
+    : 0;
 
   // Comparison metrics calculations
   const curVal = machine.current ?? 0;
   const curAvg = machine.currentAvg ?? null;
-  const curDiff = curAvg > 0 ? (((curVal - curAvg) / curAvg) * 100).toFixed(1) : "0.0";
-  const curTrend = Number(curDiff) > 1.5 ? "UP" : Number(curDiff) < -1.5 ? "DOWN" : "STABLE";
+  const curDiff =
+    curAvg > 0 ? (((curVal - curAvg) / curAvg) * 100).toFixed(1) : "0.0";
+  const curTrend =
+    Number(curDiff) > 1.5 ? "UP" : Number(curDiff) < -1.5 ? "DOWN" : "STABLE";
 
   const tempVal = machine.temperature ?? 0;
   const tempAvg = machine.temperatureAvg ?? null;
-  const tempDiff = tempAvg > 0 ? (((tempVal - tempAvg) / tempAvg) * 100).toFixed(1) : "0.0";
-  const tempTrend = Number(tempDiff) > 1.0 ? "UP" : Number(tempDiff) < -1.0 ? "DOWN" : "STABLE";
+  const tempDiff =
+    tempAvg > 0 ? (((tempVal - tempAvg) / tempAvg) * 100).toFixed(1) : "0.0";
+  const tempTrend =
+    Number(tempDiff) > 1.0 ? "UP" : Number(tempDiff) < -1.0 ? "DOWN" : "STABLE";
 
   const powerVal = machine.powerKw ?? 0;
   const powerAvg = machine.powerAvg ?? null;
-  const powerDiff = powerAvg > 0 ? (((powerVal - powerAvg) / powerAvg) * 100).toFixed(1) : "0.0";
-
+  const powerDiff =
+    powerAvg > 0
+      ? (((powerVal - powerAvg) / powerAvg) * 100).toFixed(1)
+      : "0.0";
 
   return (
     <div className="space-y-6 animate-fadeUp">
@@ -125,7 +161,9 @@ export default function MachineDetails() {
       </Link>
 
       {/* Main Machine Cockpit Header */}
-      <header className={`panel p-6 border-l-4 ${cfg.border} bg-gradient-to-r from-base-surface via-base-card to-base-surface`}>
+      <header
+        className={`panel p-6 border-l-4 ${cfg.border} bg-gradient-to-r from-base-surface via-base-card to-base-surface`}
+      >
         <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-start">
           <div>
             <div className="flex items-center gap-2.5">
@@ -135,22 +173,41 @@ export default function MachineDetails() {
               <span className="text-xs text-text-muted">{machine.type}</span>
             </div>
 
-            <h1 className="mt-2.5 text-2xl font-extrabold text-text-primary">{machine.name}</h1>
+            <h1 className="mt-2.5 break-words text-2xl font-extrabold text-text-primary">
+              {machine.name}
+            </h1>
             <p className="mt-1 text-sm font-medium text-text-secondary">
-              {company?.name} · <span className="text-text-muted">{unit?.name} ({sector?.name || "Setor de Usinagem"})</span>
+              {[company?.name, unit?.name, sector?.name]
+                .filter(Boolean)
+                .join(" · ") ||
+                machine.description ||
+                "Máquina monitorada"}
             </p>
           </div>
 
           {/* Right Status Panel */}
           <div className="flex flex-col lg:items-end">
-            <StatusBadge status={machine.status} size="md" isNew={machine.isNew} />
+            <StatusBadge
+              status={machine.status}
+              size="md"
+              isNew={machine.isNew}
+            />
             <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-text-muted">
               {getStateDurationLabel(machine.status)}
             </p>
-            <p className={`data-mono text-3xl font-extrabold ${isRunning ? "text-accent" : cfg.text}`}>
-              {disconnected ? formatRelativeTime(machine.lastCommunicationAt).replace("há ", "") : stateDuration.formatted}
+            <p
+              className={`data-mono text-3xl font-extrabold ${isRunning ? "text-accent" : cfg.text}`}
+            >
+              {disconnected ? (
+                formatRelativeTime(machine.lastCommunicationAt).replace(
+                  "há ",
+                  "",
+                )
+              ) : (
+                <Duration since={machine.stateSince} />
+              )}
             </p>
-            <div className="mt-2 flex items-center gap-2 text-xs text-text-muted">
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-text-muted">
               {disconnected ? (
                 <span className="inline-flex items-center gap-1 text-slate-400 font-medium">
                   <WifiOff size={13} /> Sem eventos recentes
@@ -161,7 +218,9 @@ export default function MachineDetails() {
                 </span>
               )}
               <span>·</span>
-              <span>Último sync {formatRelativeTime(machine.lastCommunicationAt)}</span>
+              <span>
+                Último sync {formatRelativeTime(machine.lastCommunicationAt)}
+              </span>
             </div>
           </div>
         </div>
@@ -169,44 +228,85 @@ export default function MachineDetails() {
         {/* Quick action buttons */}
         <div className="mt-6 flex flex-wrap gap-2.5 border-t border-base-border/70 pt-4">
           <div className="flex flex-wrap gap-2.5">
-            <button type="button" onClick={() => document.getElementById("telemetria-comparativa")?.scrollIntoView({ block: "start" })} className="btn-secondary !py-1.5 !px-3 text-xs">
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("telemetria-comparativa")
+                  ?.scrollIntoView({ block: "start" })
+              }
+              className="btn-secondary !py-1.5 !px-3 text-xs"
+            >
               <Zap size={14} className="text-accent" /> Telemetria Comparativa
             </button>
-            <button type="button" onClick={() => document.getElementById("ocorrencias")?.scrollIntoView({ block: "start" })} className="btn-secondary !py-1.5 !px-3 text-xs">
-              <History size={14} className="text-accent" /> Histórico de Telemetria
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("ocorrencias")
+                  ?.scrollIntoView({ block: "start" })
+              }
+              className="btn-secondary !py-1.5 !px-3 text-xs"
+            >
+              <History size={14} className="text-accent" /> Histórico de
+              Telemetria
             </button>
           </div>
         </div>
       </header>
 
       {/* Problem Alert Banner if critical */}
-      <MachineIncidents key={machine.backendId || machine.id} machine={machine} />
+      <MachineIncidents
+        key={machine.backendId || machine.id}
+        machine={machine}
+      />
       {problem && (
-        <section className={`panel p-5 border-l-4 ${cfg.border} bg-rose-500/[0.04]`}>
+        <section
+          className={`panel p-5 border-l-4 ${cfg.border} bg-rose-500/[0.04]`}
+        >
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-400">
             <AlertTriangle size={16} /> Resumo do Evento Crítico
           </div>
           <h2 className="mt-2 text-base font-bold text-text-primary">
-            {machine.id} ({machine.name}) está em estado de {cfg.label.toLowerCase()}.
+            {machine.id} ({machine.name}) está em estado de{" "}
+            {cfg.label.toLowerCase()}.
           </h2>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-lg border border-base-border bg-base-surface/80 p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Início</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                Início
+              </span>
               <p className="data-mono mt-1 text-sm font-bold text-text-primary">
-                {new Date(machine.stateSince).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                {new Date(machine.stateSince).toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
               </p>
             </div>
             <div className="rounded-lg border border-base-border bg-base-surface/80 p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Tempo no Estado</span>
-              <p className={`data-mono mt-1 text-sm font-bold ${cfg.text}`}>{stateDuration.formatted}</p>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                Tempo no Estado
+              </span>
+              <p className={`data-mono mt-1 text-sm font-bold ${cfg.text}`}>
+                <Duration since={machine.stateSince} />
+              </p>
             </div>
             <div className="rounded-lg border border-base-border bg-base-surface/80 p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Estado Anterior</span>
-              <p className="mt-1 text-sm font-bold text-text-primary">{getStatusConfig(machine.lastKnownStatus).label}</p>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                Estado Anterior
+              </span>
+              <p className="mt-1 text-sm font-bold text-text-primary">
+                {getStatusConfig(machine.lastKnownStatus).label}
+              </p>
             </div>
             <div className="rounded-lg border border-base-border bg-base-surface/80 p-3">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Recepção de eventos</span>
-              <p className={`mt-1 text-sm font-bold ${disconnected ? "text-slate-400" : "text-accent"}`}>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                Recepção de eventos
+              </span>
+              <p
+                className={`mt-1 text-sm font-bold ${disconnected ? "text-slate-400" : "text-accent"}`}
+              >
                 {disconnected ? "Offline" : "Online"}
               </p>
             </div>
@@ -221,7 +321,10 @@ export default function MachineDetails() {
             <AlertTriangle size={15} /> Situação Incomum Detectada
           </div>
           <p className="mt-1 text-xs text-text-primary">
-            A máquina <strong className="font-mono text-amber-400">{machine.id}</strong> está registrada em estado <strong>OPERANDO</strong>, porém a potência ativa registrada é de <strong>0.0 kW</strong>.
+            A máquina{" "}
+            <strong className="font-mono text-amber-400">{machine.id}</strong>{" "}
+            está registrada em estado <strong>OPERANDO</strong>, porém a
+            potência ativa registrada é de <strong>0.0 kW</strong>.
           </p>
         </div>
       )}
@@ -241,19 +344,22 @@ export default function MachineDetails() {
               </span>
             </div>
             <p className="text-xs text-text-muted">
-              Leituras recebidas e limites de referência da interface. Médias ausentes aparecem como indisponíveis.
+              Leituras recebidas e limites de referência da interface. Médias
+              ausentes aparecem como indisponíveis.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="machine-grid">
           {/* Card: Corrente */}
           <div className="panel p-4 bg-base-surface/80 border-base-border hover:border-accent/40 transition-all space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
                 <Zap size={13} className="text-accent" /> Corrente de Linha
               </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${telemetrySummary?.current?.badgeBg}`}>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${telemetrySummary?.current?.badgeBg}`}
+              >
                 {telemetrySummary?.current?.label}
               </span>
             </div>
@@ -261,16 +367,32 @@ export default function MachineDetails() {
             <div className="flex items-baseline justify-between">
               <div>
                 <span className="text-[10px] text-text-dim block">Atual</span>
-                <span className={`data-mono text-2xl font-extrabold ${telemetrySummary?.current?.isAbnormal ? "text-amber-400" : "text-accent"}`}>
+                <span
+                  className={`data-mono text-2xl font-extrabold ${telemetrySummary?.current?.isAbnormal ? "text-amber-400" : "text-accent"}`}
+                >
                   {machine.current !== null ? `${machine.current} A` : "—"}
                 </span>
               </div>
 
               <div className="text-right">
-                <span className="text-[10px] text-text-dim block">Variação vs Média</span>
-                <span className={`data-mono text-xs font-bold inline-flex items-center gap-0.5 ${Number(curDiff) > 0 ? "text-amber-400" : "text-accent"}`}>
-                  {curTrend === "UP" ? <TrendingUp size={12} /> : curTrend === "DOWN" ? <TrendingDown size={12} /> : <Minus size={12} />}
-                  {curAvg == null ? "—" : Number(curDiff) > 0 ? `+${curDiff}%` : `${curDiff}%`}
+                <span className="text-[10px] text-text-dim block">
+                  Variação vs Média
+                </span>
+                <span
+                  className={`data-mono text-xs font-bold inline-flex items-center gap-0.5 ${Number(curDiff) > 0 ? "text-amber-400" : "text-accent"}`}
+                >
+                  {curTrend === "UP" ? (
+                    <TrendingUp size={12} />
+                  ) : curTrend === "DOWN" ? (
+                    <TrendingDown size={12} />
+                  ) : (
+                    <Minus size={12} />
+                  )}
+                  {curAvg == null
+                    ? "—"
+                    : Number(curDiff) > 0
+                      ? `+${curDiff}%`
+                      : `${curDiff}%`}
                 </span>
               </div>
             </div>
@@ -278,11 +400,16 @@ export default function MachineDetails() {
             <div className="space-y-1.5 border-t border-base-border/70 pt-2.5 text-xs">
               <div className="flex justify-between text-text-muted text-[11px]">
                 <span>Média recente (5 min):</span>
-                <strong className="data-mono text-text-primary">{curAvg == null ? "—" : `${curAvg} A`}</strong>
+                <strong className="data-mono text-text-primary">
+                  {curAvg == null ? "—" : `${curAvg} A`}
+                </strong>
               </div>
               <div className="flex justify-between text-text-muted text-[11px]">
                 <span>Faixa normal:</span>
-                <strong className="data-mono text-accent font-semibold">{machine.currentNormalRange?.[0] || 10} – {machine.currentNormalRange?.[1] || 22} A</strong>
+                <strong className="data-mono text-accent font-semibold">
+                  {machine.currentNormalRange?.[0] || 10} –{" "}
+                  {machine.currentNormalRange?.[1] || 22} A
+                </strong>
               </div>
             </div>
           </div>
@@ -291,9 +418,12 @@ export default function MachineDetails() {
           <div className="panel p-4 bg-base-surface/80 border-base-border hover:border-accent/40 transition-all space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
-                <Thermometer size={13} className="text-accent" /> Temperatura do Fusil
+                <Thermometer size={13} className="text-accent" /> Temperatura do
+                Fusil
               </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${telemetrySummary?.temperature?.badgeBg}`}>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${telemetrySummary?.temperature?.badgeBg}`}
+              >
                 {telemetrySummary?.temperature?.label}
               </span>
             </div>
@@ -301,16 +431,34 @@ export default function MachineDetails() {
             <div className="flex items-baseline justify-between">
               <div>
                 <span className="text-[10px] text-text-dim block">Atual</span>
-                <span className={`data-mono text-2xl font-extrabold ${telemetrySummary?.temperature?.isAbnormal ? "text-rose-400" : "text-text-primary"}`}>
-                  {machine.temperature !== null ? `${machine.temperature} °C` : "—"}
+                <span
+                  className={`data-mono text-2xl font-extrabold ${telemetrySummary?.temperature?.isAbnormal ? "text-rose-400" : "text-text-primary"}`}
+                >
+                  {machine.temperature !== null
+                    ? `${machine.temperature} °C`
+                    : "—"}
                 </span>
               </div>
 
               <div className="text-right">
-                <span className="text-[10px] text-text-dim block">Variação vs Média</span>
-                <span className={`data-mono text-xs font-bold inline-flex items-center gap-0.5 ${Number(tempDiff) > 0 ? "text-rose-400" : "text-accent"}`}>
-                  {tempTrend === "UP" ? <TrendingUp size={12} /> : tempTrend === "DOWN" ? <TrendingDown size={12} /> : <Minus size={12} />}
-                  {tempAvg == null ? "—" : Number(tempDiff) > 0 ? `+${tempDiff}%` : `${tempDiff}%`}
+                <span className="text-[10px] text-text-dim block">
+                  Variação vs Média
+                </span>
+                <span
+                  className={`data-mono text-xs font-bold inline-flex items-center gap-0.5 ${Number(tempDiff) > 0 ? "text-rose-400" : "text-accent"}`}
+                >
+                  {tempTrend === "UP" ? (
+                    <TrendingUp size={12} />
+                  ) : tempTrend === "DOWN" ? (
+                    <TrendingDown size={12} />
+                  ) : (
+                    <Minus size={12} />
+                  )}
+                  {tempAvg == null
+                    ? "—"
+                    : Number(tempDiff) > 0
+                      ? `+${tempDiff}%`
+                      : `${tempDiff}%`}
                 </span>
               </div>
             </div>
@@ -318,11 +466,16 @@ export default function MachineDetails() {
             <div className="space-y-1.5 border-t border-base-border/70 pt-2.5 text-xs">
               <div className="flex justify-between text-text-muted text-[11px]">
                 <span>Média recente (5 min):</span>
-                <strong className="data-mono text-text-primary">{tempAvg == null ? "—" : `${tempAvg} °C`}</strong>
+                <strong className="data-mono text-text-primary">
+                  {tempAvg == null ? "—" : `${tempAvg} °C`}
+                </strong>
               </div>
               <div className="flex justify-between text-text-muted text-[11px]">
                 <span>Faixa normal:</span>
-                <strong className="data-mono text-accent font-semibold">{machine.temperatureNormalRange?.[0] || 20} – {machine.temperatureNormalRange?.[1] || 65} °C</strong>
+                <strong className="data-mono text-accent font-semibold">
+                  {machine.temperatureNormalRange?.[0] || 20} –{" "}
+                  {machine.temperatureNormalRange?.[1] || 65} °C
+                </strong>
               </div>
             </div>
           </div>
@@ -331,9 +484,12 @@ export default function MachineDetails() {
           <div className="panel p-4 bg-base-surface/80 border-base-border hover:border-accent/40 transition-all space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
-                <Activity size={13} className="text-accent" /> Potência / Consumo
+                <Activity size={13} className="text-accent" /> Potência /
+                Consumo
               </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${telemetrySummary?.power?.badgeBg}`}>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${telemetrySummary?.power?.badgeBg}`}
+              >
                 {telemetrySummary?.power?.label}
               </span>
             </div>
@@ -347,9 +503,15 @@ export default function MachineDetails() {
               </div>
 
               <div className="text-right">
-                <span className="text-[10px] text-text-dim block">Variação vs Média</span>
+                <span className="text-[10px] text-text-dim block">
+                  Variação vs Média
+                </span>
                 <span className="data-mono text-xs font-bold text-accent">
-                  {powerAvg == null ? "—" : Number(powerDiff) > 0 ? `+${powerDiff}%` : `${powerDiff}%`}
+                  {powerAvg == null
+                    ? "—"
+                    : Number(powerDiff) > 0
+                      ? `+${powerDiff}%`
+                      : `${powerDiff}%`}
                 </span>
               </div>
             </div>
@@ -357,11 +519,19 @@ export default function MachineDetails() {
             <div className="space-y-1.5 border-t border-base-border/70 pt-2.5 text-xs">
               <div className="flex justify-between text-text-muted text-[11px]">
                 <span>Média recente:</span>
-                <strong className="data-mono text-text-primary">{powerAvg == null ? "—" : `${powerAvg} kW`}</strong>
+                <strong className="data-mono text-text-primary">
+                  {powerAvg == null ? "—" : `${powerAvg} kW`}
+                </strong>
               </div>
               <div className="flex justify-between text-text-muted text-[11px]">
                 <span>Status de consumo:</span>
-                <strong className="text-accent">{telemetrySummary?.power?.isUnusual ? "Incomum" : "Nominal"}</strong>
+                <strong className="text-accent">
+                  {telemetrySummary?.power?.isUnusual
+                    ? "Incomum"
+                    : machine.powerKw == null
+                      ? "Não informado"
+                      : "Nominal"}
+                </strong>
               </div>
             </div>
           </div>
@@ -372,7 +542,9 @@ export default function MachineDetails() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted flex items-center gap-1.5">
                 <Gauge size={13} className="text-accent" /> Tensão Trifásica
               </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${telemetrySummary?.voltage?.badgeBg}`}>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${telemetrySummary?.voltage?.badgeBg}`}
+              >
                 {telemetrySummary?.voltage?.label}
               </span>
             </div>
@@ -386,19 +558,27 @@ export default function MachineDetails() {
               </div>
 
               <div className="text-right">
-                <span className="text-[10px] text-text-dim block">Faixa Nominal</span>
-                <span className="data-mono text-xs font-bold text-accent">210 – 230 V</span>
+                <span className="text-[10px] text-text-dim block">
+                  Faixa Nominal
+                </span>
+                <span className="data-mono text-xs font-bold text-accent">
+                  210 – 230 V
+                </span>
               </div>
             </div>
 
             <div className="space-y-1.5 border-t border-base-border/70 pt-2.5 text-xs">
               <div className="flex justify-between text-text-muted text-[11px]">
                 <span>Frequência da rede:</span>
-                <strong className="data-mono text-text-primary">{demoMode ? "60.0 Hz" : "Não informado"}</strong>
+                <strong className="data-mono text-text-primary">
+                  {demoMode ? "60.0 Hz" : "Não informado"}
+                </strong>
               </div>
               <div className="flex justify-between text-text-muted text-[11px]">
                 <span>Estabilidade de fase:</span>
-                <strong className="text-accent">{demoMode ? "99.8% Nominal" : "Não informado"}</strong>
+                <strong className="text-accent">
+                  {demoMode ? "99.8% Nominal" : "Não informado"}
+                </strong>
               </div>
             </div>
           </div>
@@ -408,42 +588,75 @@ export default function MachineDetails() {
       {/* ------------------------------------------------------------- */}
       {/* 22: REALTIME SENSOR TELEMETRY CHARTS (RECHARTS)               */}
       {/* ------------------------------------------------------------- */}
+      {resources.loading && (
+        <p role="status" className="text-sm text-text-muted">
+          Carregando leituras da máquina…
+        </p>
+      )}
       <TelemetryChart key={machine.id} machine={machine} />
-      {(machine.historyError || machine.utilizationError) && <p role="status" className="panel p-4 text-sm text-amber-300">Parte do histórico está temporariamente indisponível. Exibindo as últimas leituras recuperadas; o estado atual da CNC continua sendo consultado.</p>}
+      {(machine.historyError || machine.utilizationError) && (
+        <p role="status" className="panel p-4 text-sm text-amber-300">
+          Parte do histórico está temporariamente indisponível. Exibindo as
+          últimas leituras recuperadas; o estado atual da CNC continua sendo
+          consultado.
+        </p>
+      )}
 
       {/* Operational Summary (Today) */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-text-primary">Métricas Operacionais Consolidadas (Hoje)</h2>
-            <p className="text-xs text-text-muted">Distribuição temporal do turno atual de trabalho.</p>
+            <h2 className="text-sm font-bold text-text-primary">
+              Métricas Operacionais Consolidadas (Hoje)
+            </h2>
+            <p className="text-xs text-text-muted">
+              Distribuição temporal do turno atual de trabalho.
+            </p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <MetricGauge
             label="Operando"
-            value={machine.operatingTimeToday == null ? "—" : formatDuration(machine.operatingTimeToday)}
+            value={
+              machine.operatingTimeToday == null
+                ? "—"
+                : formatDuration(machine.operatingTimeToday)
+            }
             tone="text-accent"
             icon={Activity}
             progress={availability}
-            subtitle={demoMode ? `${availability}% do tempo` : "Sem consolidação diária"}
+            subtitle={
+              demoMode ? `${availability}% do tempo` : "Sem consolidação diária"
+            }
           />
           <MetricGauge
             label="Parada"
-            value={machine.stoppedTimeToday == null ? "—" : formatDuration(machine.stoppedTimeToday)}
+            value={
+              machine.stoppedTimeToday == null
+                ? "—"
+                : formatDuration(machine.stoppedTimeToday)
+            }
             tone="text-slate-300"
             icon={Clock}
           />
           <MetricGauge
             label="Alarme"
-            value={machine.alarmTimeToday == null ? "—" : formatDuration(machine.alarmTimeToday)}
+            value={
+              machine.alarmTimeToday == null
+                ? "—"
+                : formatDuration(machine.alarmTimeToday)
+            }
             tone="text-amber-400"
             icon={AlertTriangle}
           />
           <MetricGauge
             label="Emergência"
-            value={machine.emergencyTimeToday == null ? "—" : formatDuration(machine.emergencyTimeToday)}
+            value={
+              machine.emergencyTimeToday == null
+                ? "—"
+                : formatDuration(machine.emergencyTimeToday)
+            }
             tone="text-rose-400"
             icon={Radio}
           />
@@ -458,7 +671,14 @@ export default function MachineDetails() {
       </section>
 
       {/* Realtime Operating Gantt Timeline */}
-      {demoMode ? <OperatingTimeline machine={machine} /> : <p className="panel p-4 text-sm text-text-muted">Indicadores diários e linha do tempo aguardam cálculo sobre o histórico completo.</p>}
+      {demoMode ? (
+        <OperatingTimeline machine={machine} />
+      ) : (
+        <p className="panel p-4 text-sm text-text-muted">
+          Indicadores diários e linha do tempo aguardam cálculo sobre o
+          histórico completo.
+        </p>
+      )}
 
       <CncSignals machine={machine} />
 
@@ -467,25 +687,43 @@ export default function MachineDetails() {
         <div className="flex items-center justify-between border-b border-base-border/70 pb-3">
           <div className="flex items-center gap-2">
             <History size={16} className="text-accent" />
-            <h2 className="text-sm font-bold text-text-primary">Histórico de Eventos de Telemetria da CNC</h2>
+            <h2 className="text-sm font-bold text-text-primary">
+              Histórico de Eventos de Telemetria da CNC
+            </h2>
           </div>
-          <span className="font-mono text-[10px] text-text-muted">{machineEvents.length} eventos</span>
+          <span className="font-mono text-[10px] text-text-muted">
+            {machineEvents.length} eventos
+          </span>
         </div>
 
         {machineEvents.length === 0 ? (
-          <p className="text-xs text-text-muted py-4">Nenhum evento de telemetria registrado para esta máquina nesta sessão.</p>
+          <p className="text-xs text-text-muted py-4">
+            Nenhum evento de telemetria registrado para esta máquina nesta
+            sessão.
+          </p>
         ) : (
           <div className="divide-y divide-base-border/70 max-h-72 overflow-y-auto">
             {machineEvents.map((event) => (
-              <div key={event.id} className="flex flex-col sm:flex-row sm:items-center justify-between py-3 gap-2 pr-2">
+              <div
+                key={event.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between py-3 gap-2 pr-2"
+              >
                 <div className="flex items-center gap-2.5">
-                  <span className="data-mono text-xs font-semibold text-text-muted shrink-0">{event.time}</span>
-                  <span className="text-xs font-semibold text-text-primary">{event.text}</span>
+                  <span className="data-mono text-xs font-semibold text-text-muted shrink-0">
+                    {event.time}
+                  </span>
+                  <span className="text-xs font-semibold text-text-primary">
+                    {event.text}
+                  </span>
                   {event.detail && (
-                    <span className="text-[11px] text-text-muted">({event.detail})</span>
+                    <span className="text-[11px] text-text-muted">
+                      ({event.detail})
+                    </span>
                   )}
                 </div>
-                {event.status && <StatusBadge status={event.status} size="sm" />}
+                {event.status && (
+                  <StatusBadge status={event.status} size="sm" />
+                )}
               </div>
             ))}
           </div>
@@ -494,4 +732,3 @@ export default function MachineDetails() {
     </div>
   );
 }
-

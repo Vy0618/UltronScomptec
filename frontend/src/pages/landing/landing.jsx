@@ -1,12 +1,28 @@
 import { Link } from "react-router-dom";
-import { Activity, BellRing, History, Factory, ArrowRight, ShieldCheck, Cpu, Terminal, Radio } from "lucide-react";
+import { Activity, BellRing, History, Factory, ArrowRight } from "lucide-react";
 import Logo from "../../components/logo/logo";
 
 const highlights = [
-  { icon: Activity, title: "Telemetria Contínua", desc: "Leitura de corrente, tensão, ciclo e sensores a 100Hz." },
-  { icon: BellRing, title: "Alertas de Emergência", desc: "Notificação instantânea de botões de soco e alarmes de PLC." },
-  { icon: History, title: "Auditoria & Histórico", desc: "Timeline cronológica de 24h e cálculo de disponibilidade OEE." },
-  { icon: Factory, title: "Parque Multi-Unidade", desc: "Controle de múltiplas plantas industriais, setores e máquinas." },
+  {
+    icon: Activity,
+    title: "Telemetria Contínua",
+    desc: "Leitura de corrente, tensão, ciclo e sensores a 100Hz.",
+  },
+  {
+    icon: BellRing,
+    title: "Alertas de Emergência",
+    desc: "Notificação instantânea de botões de soco e alarmes de PLC.",
+  },
+  {
+    icon: History,
+    title: "Auditoria & Histórico",
+    desc: "Timeline cronológica de 24h e cálculo de disponibilidade OEE.",
+  },
+  {
+    icon: Factory,
+    title: "Parque Multi-Unidade",
+    desc: "Controle de múltiplas plantas industriais, setores e máquinas.",
+  },
 ];
 
 export default function Landing() {
@@ -41,8 +57,9 @@ export default function Landing() {
         </h1>
 
         <p className="mt-5 max-w-2xl text-sm sm:text-base text-text-muted leading-relaxed">
-          Acompanhe o estado de controladores legados e modernos — operando, em alarme, parada ou emergência —
-          com telemetria instantânea, gráficos de utilização e alertas ao vivo em qualquer dispositivo.
+          Acompanhe o estado de controladores legados e modernos — operando, em
+          alarme, parada ou emergência — com telemetria instantânea, gráficos de
+          utilização e alertas ao vivo em qualquer dispositivo.
         </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -64,7 +81,9 @@ export default function Landing() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-white">{title}</h3>
-                <p className="mt-1 text-xs text-text-muted leading-relaxed">{desc}</p>
+                <p className="mt-1 text-xs text-text-muted leading-relaxed">
+                  {desc}
+                </p>
               </div>
             </div>
           ))}
@@ -73,7 +92,8 @@ export default function Landing() {
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-base-border/70 px-6 py-5 text-center text-xs text-text-muted bg-base-surface/40">
-        © {new Date().getFullYear()} SCOMPTEC Automação Industrial — Todos os direitos reservados.
+        © {new Date().getFullYear()} SCOMPTEC Automação Industrial — Todos os
+        direitos reservados.
       </footer>
     </div>
   );

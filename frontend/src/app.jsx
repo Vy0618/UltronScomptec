@@ -1,60 +1,78 @@
+import { lazy } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 
-import Splash from "./pages/splash/splash";
-import Landing from "./pages/landing/landing";
-import Login from "./pages/login/login";
-import Register from "./pages/register/register";
-import CompanySelection from "./pages/companySelection/companySelection";
+import RouteBoundary from "./components/routeBoundary/routeBoundary";
+const PasswordHelp = lazy(() => import("./pages/passwordHelp/passwordHelp"));
+const Landing = lazy(() => import("./pages/landing/landing"));
+const Login = lazy(() => import("./pages/login/login"));
+const Register = lazy(() => import("./pages/register/register"));
+const CompanySelection = lazy(
+  () => import("./pages/companySelection/companySelection"),
+);
 
-import DashboardLayout from "./layouts/dashboardLayout/dashboardLayout";
-import Dashboard from "./pages/dashboard/dashboard";
-import Machines from "./pages/machines/machines";
-import MachineDetails from "./pages/machineDetails/machineDetails";
-import Alerts from "./pages/alerts/alerts";
-import History from "./pages/history/history";
-import Clients from "./pages/clients/clients";
-import Units from "./pages/units/units";
-import Devices from "./pages/devices/devices";
-import Settings from "./pages/settings/settings";
-import Admin from "./pages/admin/admin";
-import AdminAccess from "./pages/admin/adminAccess";
+const DashboardLayout = lazy(
+  () => import("./layouts/dashboardLayout/dashboardLayout"),
+);
+const Dashboard = lazy(() => import("./pages/dashboard/dashboard"));
+const Machines = lazy(() => import("./pages/machines/machines"));
+const MachineDetails = lazy(
+  () => import("./pages/machineDetails/machineDetails"),
+);
+const Alerts = lazy(() => import("./pages/alerts/alerts"));
+const History = lazy(() => import("./pages/history/history"));
+const Clients = lazy(() => import("./pages/clients/clients"));
+const Units = lazy(() => import("./pages/units/units"));
+const Devices = lazy(() => import("./pages/devices/devices"));
+const Settings = lazy(() => import("./pages/settings/settings"));
+const Admin = lazy(() => import("./pages/admin/admin"));
+const AdminAccess = lazy(() => import("./pages/admin/adminAccess"));
 
-import TVLayout from "./layouts/tvLayout/tvLayout";
-import TVDashboard from "./pages/tvDashboard/tvDashboard";
+const TVLayout = lazy(() => import("./layouts/tvLayout/tvLayout"));
+const TVDashboard = lazy(() => import("./pages/tvDashboard/tvDashboard"));
 import { MonitoringProvider } from "./contexts/monitoringContext";
 
 export default function App() {
   return (
     <MonitoringProvider>
-    <Routes>
-      {/* Fluxo de acesso */}
-      <Route path="/" element={<Splash />} />
-      <Route path="/inicio" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/registro" element={<Register />} />
-      <Route path="/selecionar-empresa" element={<CompanySelection />} />
+      <RouteBoundary>
+        <Routes>
+          {/* Fluxo de acesso */}
+          <Route path="/" element={<Navigate to="/inicio" replace />} />
+          <Route path="/recuperar-senha" element={<PasswordHelp />} />
+          <Route path="/inicio" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/registro" element={<Register />} />
+          <Route path="/selecionar-empresa" element={<CompanySelection />} />
 
-      {/* Área interna (dashboard) */}
-      <Route element={<DashboardLayout />}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/maquinas" element={<Machines />} />
-        <Route path="/maquinas/:id" element={<MachineDetails />} />
-        <Route path="/alertas" element={<Alerts />} />
-        <Route path="/historico" element={<History />} />
-        <Route path="/clientes" element={<Clients />} />
-        <Route path="/unidades" element={<Units />} />
-        <Route path="/dispositivos" element={<Devices />} />
-        <Route path="/configuracoes" element={<Settings />} />
-        <Route path="/admin" element={<AdminAccess><Admin /></AdminAccess>} />
-      </Route>
+          {/* Área interna (dashboard) */}
+          <Route element={<DashboardLayout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/maquinas" element={<Machines />} />
+            <Route path="/maquinas/:id" element={<MachineDetails />} />
+            <Route path="/alertas" element={<Alerts />} />
+            <Route path="/historico" element={<History />} />
+            <Route path="/clientes" element={<Clients />} />
+            <Route path="/unidades" element={<Units />} />
+            <Route path="/dispositivos" element={<Devices />} />
+            <Route path="/configuracoes" element={<Settings />} />
+            <Route
+              path="/admin"
+              element={
+                <AdminAccess>
+                  <Admin />
+                </AdminAccess>
+              }
+            />
+          </Route>
 
-      {/* Modo TV */}
-      <Route element={<TVLayout />}>
-        <Route path="/tv" element={<TVDashboard />} />
-      </Route>
+          {/* Modo TV */}
+          <Route element={<TVLayout />}>
+            <Route path="/tv" element={<TVDashboard />} />
+          </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </RouteBoundary>
     </MonitoringProvider>
   );
 }

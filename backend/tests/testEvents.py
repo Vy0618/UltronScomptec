@@ -40,6 +40,65 @@ def send(client, machine, states, **options):
     return client.post('/api/events', json={'machine_id': machine['id'], 'states': states, **options})
 
 
+def test_bulk_status_matches_individual_status_and_uses_constant_queries(event_api):
+    from sqlalchemy import event
+    client, db, machine, current = event_api
+    machines = [machine] + [client.post('/api/cncs', json={'name': f'CNC {i}'}).json() for i in range(9)]
+    for index, item in enumerate(machines[:-1]):
+        send(client, item, {'emergencia': index % 2 == 0, 'em_execucao': index % 2 == 1})
+    expected = [client.get(f"/api/cncs/{item['id']}/status").json() for item in machines]
+    queries = []
+    def count(_connection, _cursor, statement, _params, _context, _many):
+        queries.append(statement)
+    event.listen(db.bind, 'before_cursor_execute', count)
+    try:
+        response = client.get('/api/cncs/statuses')
+    finally:
+        event.remove(db.bind, 'before_cursor_execute', count)
+    assert response.status_code == 200, response.text
+    assert response.json() == expected
+    assert len(queries) == 3
+    current[0] += timedelta(seconds=clock.OFFLINE_TIMEOUT_SECONDS + 1)
+    assert all(item['status'] == 'SEM_COMUNICACAO' for item in client.get('/api/cncs/statuses').json())
+
+
+def test_bulk_status_preserves_legacy_and_same_second_ordering(event_api):
+    from database.models import TelemetryOrder
+    client, db, machine, current = event_api
+    device = client.post('/api/devices', json={'name': 'Legado', 'mac_address': '02:00:00:00:00:09', 'cnc_id': machine['id']}).json()
+    reading = Telemetry(device_id=device['id'], timestamp=current[0], received_at=current[0],
+                        machine_active=True, digital_signals={'ciclo': True}, analog_signals={}, extra_signals={})
+    db.add(reading)
+    db.flush()
+    db.add(TelemetryOrder(telemetry_id=reading.id))
+    db.commit()
+    def assert_same():
+        individual = client.get(f"/api/cncs/{machine['id']}/status").json()
+        assert client.get('/api/cncs/statuses').json() == [individual]
+    assert_same()
+    for states in ({'emergencia': True}, {'pausa': True}, {'alarme': True}):
+        send(client, machine, states)
+        assert_same()
+
+
+def test_fleet_history_is_complete_paginated_and_filterable(event_api):
+    client, _, machine, current = event_api
+    second = client.post('/api/cncs', json={'name': 'Outra CNC'}).json()
+    ids = []
+    for index in range(5):
+        ids.append(send(client, machine if index % 2 else second, {'em_execucao': True}).json()['id'])
+    pages = [client.get(f'/api/cncs/history?page={page}&limit=2').json() for page in (1, 2, 3)]
+    assert all(page['total'] == 5 for page in pages)
+    assert [item['id'] for page in pages for item in page['items']] == ids[::-1]
+    filtered = client.get('/api/cncs/history', params={'machine_id': machine['id']}).json()
+    assert filtered['total'] == 2
+    assert all(item['machine_id'] == machine['id'] for item in filtered['items'])
+    assert client.get('/api/cncs/history', params={'end': (current[0] - timedelta(seconds=1)).isoformat()}).json()['total'] == 0
+    assert client.get('/api/cncs/history?start=2026-11-01&end=2026-10-01').status_code == 422
+    assert client.get('/api/cncs/history?limit=501').status_code == 422
+    assert client.get('/api/cncs/history', params={'machine_id': str(uuid4())}).status_code == 404
+
+
 def test_minimal_event_updates_dashboard_history_and_utilization_without_a_device(event_api):
     client, db, machine, _ = event_api
     response = send(client, machine, {'em_execucao': True, 'alarme': False})
