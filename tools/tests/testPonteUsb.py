@@ -75,6 +75,21 @@ def test_chunks_registration_database_and_frontend(api):
     assert client.get(f'/api/cncs/{cnc}/history').json()['total']==1
 
 
+def test_generic_usb_event_preserves_current_and_simulation_metadata(api):
+    adapter, client, _ = api
+    machine = client.post('/api/cncs', json={'name': 'Corrente simulada'}).json()
+    wire = frame()
+    wire['payload']['analog_signals'] = {'current': 12.5}
+    wire['payload']['extra_signals']['current_input']['source'] = 'simulated'
+    reading = reading_from(wire)
+    gateway = Gateway(adapter, machine_id=machine['code'])
+    event = gateway.payload_for(reading)
+    assert event['analog_signals'] == {'current': 12.5}
+    assert gateway.send(reading, event)['analog_signals'] == {'current': 12.5}
+    status = client.get(f"/api/cncs/{machine['id']}/status").json()
+    assert status['extra_signals']['current_input']['source'] == 'simulated'
+
+
 def test_existing_uuid_preserves_binding(api):
     adapter,client,db=api
     registration=adapter.post('/devices/register',{'mac_address':'AA:BB:CC:DD:EE:12'})
@@ -214,12 +229,11 @@ def test_boolean_monitor_real_firmware_frame_reaches_api(api):
     payload = gateway.payload_for(reading)
     saved = gateway.send(reading, payload)
     assert saved['digital_signals'] == dict.fromkeys((
-        'em_execucao', 'pausa', 'parada', 'emergencia',
-        'motor_ligado', 'automatico', 'manual', 'alarme'), True)
-    assert saved['machine_active'] is True
-    assert saved['extra_signals']['profile'] == 'boolean_monitor_v1'
+        'ativo', 'inativo', 'emergencia', 'motor_ligado', 'alarme', 'porta_aberta'), True)
+    assert saved['machine_active'] is False
+    assert saved['extra_signals']['profile'] == 'six_signals_current_reserved_v2'
     assert saved['extra_signals']['entradas_brutas'] == dict.fromkeys(
-        (f'I{i}' for i in range(1, 9)), True)
+        (f'I{i}' for i in range(1, 7)), True)
     assert saved['voltage_24v'] is None and saved['analog_signals'] == {}
     assert gateway.send(reading, payload)['id'] == saved['id']
     assert len(db.scalars(select(MachineEvent)).all()) == 1

@@ -1,3 +1,5 @@
+import { machineActiveFromStates } from "./cncSignals.js";
+
 // Pure transformations shared by monitoring and its regression tests.
 export function readAnalog(signals, ...keys) {
   for (const key of keys) {
@@ -57,12 +59,7 @@ export function readingStatus(reading) {
   if (digital.emergencia || digital.emergency) return "EMERGENCIA";
   if (digital.alarme || digital.alarm) return "ALARME";
   if (digital.manutencao || digital.maintenance) return "MANUTENCAO";
-  if (
-    reading.machine_active ||
-    digital.em_execucao ||
-    digital.ciclo ||
-    digital.cycle
-  )
+  if (machineActiveFromStates(digital, reading.machine_active))
     return "OPERANDO";
   return "PARADA";
 }
@@ -79,6 +76,7 @@ export function readingEvent(reading, machine) {
     time: new Date(reading.timestamp).toLocaleTimeString("pt-BR"),
     text: `Leitura recebida: ${status}`,
     isActive: false,
+    signalOutputs: reading.signal_outputs || [],
   };
 }
 

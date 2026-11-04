@@ -14,6 +14,8 @@ from services.clock import is_online, normalize_datetime, OFFLINE_TIMEOUT_SECOND
 from services.codeService import next_code as allocate_code
 from services.eventRepository import event_table, ordered_query, observation, latest_event, latest_events
 from services.utilization import calculate_utilization
+from services.machineState import derive_diagnostics
+from services.signalOutputs import derive_signal_outputs
 
 router = APIRouter(prefix="/cncs", tags=["CNC"])
 
@@ -120,6 +122,8 @@ def status_response(cnc, reading):
         id=cnc.id, code=cnc.code, name=cnc.name, description=cnc.description, status=status,
         status_since=since, status_duration_seconds=max(0, duration), last_seen=last_seen,
         online=online, states=reading.digital_signals or {} if reading else {},
+        diagnostics=derive_diagnostics(reading.digital_signals) if reading else [],
+        signal_outputs=derive_signal_outputs(reading),
         gateway_online=online, last_known_status=cnc.status,
         telemetry_timestamp=reading.timestamp if reading else None,
         telemetry_received_at=reading.received_at if reading else None,
@@ -149,6 +153,8 @@ def history_response(db, cnc_id, start, end, page, limit):
         query = query.where(table.c.timestamp <= end)
     total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
     items = [observation(row) for row in db.execute(query.offset((page - 1) * limit).limit(limit)).all()]
+    for item in items:
+        item.signal_outputs = derive_signal_outputs(item)
     return TelemetryHistoryResponse(items=items, total=total, page=page, limit=limit)
 
 

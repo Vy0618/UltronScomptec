@@ -2,26 +2,45 @@
 
 Monitoramento de máquinas CNC com Arduino Opta, API FastAPI, MySQL e dashboard React. Exibe estados, alertas e histórico a partir dos sinais disponibilizados pela IHM/CLP.
 
+## Acesso administrativo
+
+Credenciais configuradas para a conta administrativa desta instalação. A API cria ou atualiza essa conta ao iniciar em modo normal.
+
+| Campo | Valor |
+|---|---|
+| Login | http://127.0.0.1:5173/login |
+| E-mail | ` admin@empresa.com.br ` |
+| Senha | ` SUBSTITUA_POR_SENHA_ADMINISTRATIVA ` |
+| Painel administrativo | http://127.0.0.1:5173/admin |
+
+O launcher com `-Simular` não importa essas credenciais nem cria automaticamente a conta administrativa. Para uma conta de teste, consulte [Autenticação e administração](#autenticação-e-administração).
+
 ## Sumário
 
+- [Acesso administrativo](#acesso-administrativo)
 - [Funcionamento](#funcionamento)
+  - [Sinais e regras da aplicação](#sinais-e-regras-da-aplicação)
+  - [Interpretações na dashboard](#interpretações-na-dashboard)
+  - [Mapeamento físico atual do Opta](#mapeamento-físico-atual-do-opta)
+  - [Corrente na entrada I8](#corrente-na-entrada-i8)
 - [Setup](#setup)
   - [Dependências no Linux](#dependências-no-linux)
   - [Dependências no Windows](#dependências-no-windows)
   - [Configuração do frontend](#configuração-do-frontend)
-- [Método 1: setup com o Opta](#método-1-setup-com-o-opta)
-  - [1. Configurar MySQL e backend](#1-configurar-mysql-e-backend)
-  - [2. Iniciar a API e cadastrar a máquina](#2-iniciar-a-api-e-cadastrar-a-máquina)
-  - [3. Gravar o Opta](#3-gravar-o-opta)
-  - [4. Iniciar a ponte USB](#4-iniciar-a-ponte-usb)
-  - [5. Abrir a dashboard](#5-abrir-a-dashboard)
-  - [Opta no Windows (PowerShell)](#opta-no-windows-powershell)
-- [Método 2: setup com simulação local](#método-2-setup-com-simulação-local)
-  - [1. Iniciar a API com SQLite](#1-iniciar-a-api-com-sqlite)
-  - [2. Cadastrar a máquina simulada](#2-cadastrar-a-máquina-simulada)
-  - [3. Publicar eventos simulados](#3-publicar-eventos-simulados)
-  - [4. Abrir a dashboard e conferir os estados](#4-abrir-a-dashboard-e-conferir-os-estados)
-  - [Simulação no Windows (PowerShell)](#simulação-no-windows-powershell)
+- [1) Setup para testes locais](#1-setup-para-testes-locais)
+  - [a) Setup e inicialização](#a-setup-e-inicialização)
+    - [Linux / Bash](#linux--bash)
+    - [Windows / PowerShell](#windows--powershell)
+  - [b) Lista de comandos úteis](#b-lista-de-comandos-úteis)
+- [2) Setup para teste integrado com o CLP](#2-setup-para-teste-integrado-com-o-clp)
+  - [Preparar os sinais do CLP](#preparar-os-sinais-do-clp)
+  - [Setup e inicialização no Linux](#setup-e-inicialização-no-linux)
+    - [1. Configurar MySQL e backend](#1-configurar-mysql-e-backend)
+    - [2. Iniciar a API e cadastrar a máquina](#2-iniciar-a-api-e-cadastrar-a-máquina)
+    - [3. Gravar o Opta](#3-gravar-o-opta)
+    - [4. Iniciar a ponte USB](#4-iniciar-a-ponte-usb)
+    - [5. Abrir a dashboard](#5-abrir-a-dashboard)
+  - [Setup e inicialização no Windows (PowerShell)](#setup-e-inicialização-no-windows-powershell)
 - [Acesso e distribuição da dashboard](#acesso-e-distribuição-da-dashboard)
   - [Acesso pela rede](#acesso-pela-rede)
   - [Hospedagem web](#hospedagem-web)
@@ -39,24 +58,78 @@ IHM/CLP → Opta → USB → ponte Python → API → MySQL
                                 Dashboard React
 ```
 
-1. A IHM/CLP disponibiliza oito sinais digitais.
+1. A IHM/CLP disponibiliza os seis sinais digitais do perfil configurado.
 2. O Opta lê as entradas e envia estados pela serial USB a 115200 baud, nas mudanças e com heartbeat de 1 s.
 3. `tools/ponteUsb.py` converte as leituras em eventos e envia para `POST /api/events`.
 4. A API valida e grava os eventos por máquina no MySQL.
 5. A dashboard consulta a API; cada nova rodada começa 5 s após a anterior terminar.
 
-| IHM/CLP | Opta | Pino | Estado |
-|---|---|---|---|
-| D000 | I1 | A0 | `em_execucao` |
-| D001 | I2 | A1 | `pausa` |
-| D002 | I3 | A2 | `parada` |
-| D003 | I4 | A3 | `emergencia` |
-| D004 | I5 | A4 | `motor_ligado` |
-| D005 | I6 | A5 | `automatico` |
-| D006 | I7 | A6 | `manual` |
-| D007 | I8 | A7 | `alarme` |
+### Sinais e regras da aplicação
 
-O firmware apenas monitora entradas. Polaridade e filtros ficam em [config.h](firmware/optaCncMonitor/config.h). As filas são limitadas e ficam em RAM; interrupções podem perder transições. O perfil atual observa booleanos e não implementa protocolos proprietários Mitsubishi ou controle de atuadores.
+O perfil atual da aplicação acompanha seis sinais booleanos independentes:
+
+| Chave em `states` | Significado |
+|---|---|
+| `ativo` | Atividade da máquina informada pelo produtor |
+| `inativo` | Inatividade informada pelo produtor |
+| `emergencia` | Emergência acionada |
+| `motor_ligado` | Motor ligado; isoladamente não significa execução |
+| `alarme` | Alarme / erro |
+| `porta_aberta` | Porta aberta |
+
+`ativo=true` leva a `OPERANDO`; `inativo=true` leva a `PARADA`, sem significar máquina desligada. Emergência e alarme mantêm prioridade sobre atividade. `ativo=false` explícito prevalece sobre o indicador de execução legado. Não inferimos `inativo=true` a partir de `ativo=false`, nem o inverso. Um sinal ausente continua **não informado**.
+
+As consultas de status individual e coletivo também retornam `diagnostics`, calculados a partir da mesma leitura:
+
+- `porta_aberta=true` + `emergencia=true`: **Operação falha**, mantendo o estado `EMERGENCIA`.
+- `ativo=true` + `inativo=true`: **Sinais de atividade conflitantes**, com estado `PARADA` enquanto não houver emergência ou alarme.
+
+Os diagnósticos aparecem nos detalhes, cartões e alertas. Uma nova combinação gera notificação mesmo quando o estado resumido continua igual. Em perda de comunicação, o último diagnóstico é identificado como antigo; os valores recebidos são preservados. A primeira carga não cria notificações de mudança.
+
+### Interpretações na dashboard
+
+O painel **Interações entre sinais** mostra saídas calculadas pela API em `signal_outputs`, com código, nível, título, mensagem e sinais envolvidos. Há filtros por máquina e por nível (**Informativo**, **Atenção**, **Crítico**), com seis máquinas por página e duas interpretações resumidas por cartão. Os detalhes mostram todas as saídas; cartões, alertas, histórico e modo TV também exibem interpretações.
+
+As combinações da [tabela do relatório](docs/reports/sinaisOperacionaisCorrente.md#resultado-das-interações-entre-sinais) geram saídas, inclusive condições sem falha, corrente simulada e leitura parcial. Mais de uma regra pode corresponder à mesma leitura. As saídas não modificam o estado operacional nem os sinais recebidos e não acionam relés. As consultas de status e histórico usam a mesma interpretação; o histórico é calculado a partir de cada leitura armazenada, sem copiar o estado atual.
+
+Uma alteração de sinais atualiza o painel mesmo sem mudança de status. As notificações existentes continuam ligadas a mudanças de estado e aos dois diagnósticos específicos; interpretações informativas não geram notificações a cada atualização. Em perda de comunicação, os últimos resultados são identificados como antigos.
+
+### Mapeamento físico atual do Opta
+
+O firmware adota I1–I6 na ordem dos seis sinais solicitados, mantém I7 livre e reserva I8 para corrente. O `Main.pdf` representa o mapeamento anterior, com oito redes `%M0.0`–`%M0.7` → `%Q0.0`–`%Q0.7`, sem porta aberta: ele não comprova o novo vínculo entre os sinais do CLP e as entradas abaixo. Ajuste a origem dos sinais conforme este perfil antes de usar o firmware atualizado na bancada.
+
+| Opta | Pino | Sinal / finalidade |
+|---|---|---|
+| I1 | A0 | `ativo` |
+| I2 | A1 | `inativo` |
+| I3 | A2 | `emergencia` |
+| I4 | A3 | `motor_ligado` |
+| I5 | A4 | `alarme` |
+| I6 | A5 | `porta_aberta` |
+| I7 | A6 | Reserva livre |
+| I8 | A7 | Corrente em A, medição física desativada |
+
+O firmware apenas monitora entradas. Polaridade e filtros ficam em [config.h](firmware/optaCncMonitor/config.h). As filas são limitadas e ficam em RAM; interrupções podem perder transições. O perfil atual observa booleanos e não implementa protocolos proprietários Mitsubishi ou controle de atuadores. Nomes legados de execução (`em_execucao`/`ciclo`/`cycle`) continuam aceitos pela aplicação; o histórico e outros sinais recebidos são preservados.
+
+### Corrente na entrada I8
+
+I8/A7 fica configurada como entrada reservada. O firmware não executa leitura digital ou ADC nessa porta e não publica uma corrente fictícia. Sem sensor e calibração, `analog_signals` permanece vazio e a dashboard mostra **NÃO INFORMADO**, distinguindo ausência de valor de uma corrente válida de `0 A`. A reserva aparece em `extra_signals.current_input`, com unidade `A`, origem `unavailable` e `physical_enabled=false`.
+
+A API aceita o campo opcional `analog_signals.current`, com número finito e não negativo em ampères, além de `extra_signals` para identificar a origem. Para simular uma corrente, com a API e a máquina já cadastradas, pare outro produtor que esteja enviando snapshots para essa CNC e execute:
+
+```bash
+.venv/bin/python tools/simuladorCnc.py --machine-id CNC-001 --state ativo --current 12.5 --count -1 --interval 1 \
+  | .venv/bin/python tools/publicarEventos.py --api http://127.0.0.1:8000/api --key=
+```
+
+No PowerShell:
+
+```powershell
+& .\.venv\Scripts\python.exe tools/simuladorCnc.py --machine-id CNC-001 --state ativo --current 12.5 --count -1 --interval 1 |
+  & .\.venv\Scripts\python.exe tools/publicarEventos.py --api http://127.0.0.1:8000/api --key=
+```
+
+Troque `12.5` pelo valor desejado, inclusive `0`. O comando marca a origem como `simulated`; cartões, detalhes e gráfico identificam a simulação. Uma leitura posterior sem corrente volta a indicar valor não informado, sem carregar o número anterior. A reserva de I8 não configura saídas de relé e não habilita uma medição física sem sensor.
 
 ## Setup
 
@@ -64,8 +137,8 @@ Escolha o método de acordo com o que deseja executar:
 
 | Método | Origem dos dados | Banco | Requisitos adicionais |
 |---|---|---|---|
-| [Com o Opta](#método-1-setup-com-o-opta) | IHM/CLP → Opta → USB → ponte Python | MySQL 8 | Opta, cabo USB de dados e Arduino CLI |
-| [Simulação local](#método-2-setup-com-simulação-local) | Simulador Python → publicador HTTP | SQLite em arquivo local | Nenhum hardware ou servidor MySQL |
+| [1) Testes locais](#1-setup-para-testes-locais) | Simulador Python → publicador HTTP | SQLite em arquivo local | Nenhum hardware ou servidor MySQL |
+| [2) Teste integrado com CLP/Opta](#2-setup-para-teste-integrado-com-o-clp) | IHM/CLP → Opta → USB → ponte Python | MySQL 8 | Opta, cabo USB de dados e Arduino CLI |
 
 Os dois métodos usam **Python 3.10+** e **Node.js 22.12+ com npm**. Faça a preparação comum abaixo e depois siga somente o método escolhido. Execute todos os comandos na raiz do repositório; mantenha essa pasta também nos novos terminais.
 
@@ -118,11 +191,174 @@ VITE_USE_MOCKS=false
 
 Mantenha `VITE_USE_MOCKS=false` também na simulação: os dados simulados devem passar pela API e pelo banco. No desenvolvimento, o Vite encaminha `/api` para `http://127.0.0.1:8000`. Reinicie o frontend após alterar o `.env`.
 
-## Método 1: setup com o Opta
+<a id="testar-sem-hardware"></a>
 
-Use este caminho para coletar os sinais da IHM/CLP pelo Opta conectado via USB ao computador que executa a ponte Python. Além da preparação comum, instale MySQL 8 e deixe `arduino-cli` disponível no PATH. Para Windows, siga [Opta no Windows](#opta-no-windows-powershell).
+## 1) Setup para testes locais
 
-### 1. Configurar MySQL e backend
+Este modo testa API, SQLite e dashboard com sinais produzidos por comandos. Não exige CLP, Opta, Arduino CLI ou servidor MySQL. Faça primeiro a [preparação comum](#setup); os exemplos usam o ambiente virtual sem precisar ativá-lo.
+
+### a) Setup e inicialização
+
+#### Linux / Bash
+
+Use três terminais na raiz do repositório. Se a porta 8000 já estiver ocupada por uma API do projeto, encerre essa instância antes de iniciar o teste.
+
+**Terminal 1 — API e banco SQLite isolado:**
+
+```bash
+mkdir -p .local
+ULTRON_SIMULATION=true DATABASE_URL=sqlite:///./.local/simulacao.db \
+ADMIN_EMAIL= ADMIN_PASSWORD= INGEST_API_KEY= DEVICE_API_KEY= \
+EVENT_OFFLINE_TIMEOUT_SECONDS=10 \
+.venv/bin/python -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000
+```
+
+`ULTRON_SIMULATION=true` impede a leitura de `backend/.env` e `backend/config.json`. O arquivo `.local/simulacao.db` é criado automaticamente, preserva os dados entre execuções e não usa o MySQL da instalação. Conta administrativa e chaves de ingestão ficam vazias apenas nesse processo.
+
+**Terminal 2 — dashboard:**
+
+```bash
+npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```
+
+Confirme `VITE_API_BASE_URL=/api` e `VITE_USE_MOCKS=false` em `frontend/.env`. O Vite encaminha as chamadas à API local na porta 8000.
+
+**Terminal 3 — conferir serviços e cadastrar a máquina:**
+
+```bash
+API=http://127.0.0.1:8000/api
+curl --fail-with-body -sS "$API/health" | jq
+curl --fail-with-body -sS "$API/cncs" | jq
+
+# Somente se precisar de uma máquina nova:
+curl --fail-with-body -sS -X POST "$API/cncs" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"CNC simulada","description":"Teste local sem hardware"}' | jq
+```
+
+A saúde esperada é `{"status":"ok","database":"ok"}`. Anote o `id` (UUID) e o `code` retornados. Os comandos abaixo usam `CNC-001`: substitua pelo código real. Reutilize uma CNC existente quando possível; códigos excluídos não são reutilizados.
+
+Abra **http://127.0.0.1:5173/dashboard** e execute um produtor da [lista de comandos](#b-lista-de-comandos-úteis) no terceiro terminal. API, frontend e produtor devem permanecer em execução. As interpretações aparecem no painel **Interações entre sinais**, nos detalhes `/maquinas/CNC-001`, no histórico `/historico` e no modo `/tv`. A documentação da API fica em **http://127.0.0.1:8000/docs**.
+
+#### Windows / PowerShell
+
+Depois de instalar as dependências e configurar o frontend, inicie API e dashboard com o launcher:
+
+```powershell
+.\iniciarLocal.ps1 -Simular
+$api = 'http://127.0.0.1:8000/api'
+Invoke-RestMethod "$api/health"
+Invoke-RestMethod "$api/cncs"
+
+# Somente se precisar de uma máquina nova:
+$body = @{ name = 'CNC simulada'; description = 'Teste local sem hardware' } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "$api/cncs" -ContentType 'application/json' -Body $body
+```
+
+O launcher inicia API e frontend em segundo plano, usa `.local/simulacao.db` e timeout de 10 s. Ele **não inicia o produtor de eventos**: use os comandos da próxima seção com o código cadastrado. Logs ficam em `.local`.
+
+Abra **http://127.0.0.1:5173/dashboard**. Para encerrar, use `Ctrl+C` no produtor e depois:
+
+```powershell
+.\iniciarLocal.ps1 -Acao parar
+```
+
+### b) Lista de comandos úteis
+
+Mantenha API e frontend abertos. Execute somente **um produtor por CNC** e interrompa-o com `Ctrl+C` antes de escolher outra combinação. Cada evento substitui o snapshot completo da máquina; não há mescla com a leitura anterior.
+
+No Bash, defina esta função no terminal de injeção:
+
+```bash
+set -o pipefail
+MACHINE_CODE=CNC-001
+API=http://127.0.0.1:8000/api
+
+enviar_sinais() {
+  .venv/bin/python tools/simuladorCnc.py --machine-id "$MACHINE_CODE" --count -1 --interval 1 "$@" \
+    | .venv/bin/python tools/publicarEventos.py --api "$API" --key=
+}
+```
+
+No PowerShell, use a função equivalente:
+
+```powershell
+$codigoMaquina = 'CNC-001'
+$api = 'http://127.0.0.1:8000/api'
+
+function Enviar-Sinais {
+  & .\.venv\Scripts\python.exe tools/simuladorCnc.py --machine-id $codigoMaquina --count -1 --interval 1 @args |
+    & .\.venv\Scripts\python.exe tools/publicarEventos.py --api $api --key=
+}
+```
+
+Escolha um exemplo da tabela. No PowerShell, substitua `enviar_sinais` por `Enviar-Sinais`, mantendo os argumentos:
+
+| Objetivo | Comando Bash | Resultado esperado |
+|---|---|---|
+| Atividade com motor ligado | `enviar_sinais --state ativo --also motor_ligado` | `OPERANDO`; “Atividade com motor ligado”. |
+| Máquina inativa | `enviar_sinais --state inativo` | `PARADA`; “Inatividade informada”. |
+| Alarme durante atividade | `enviar_sinais --state ativo --also alarme` | `ALARME`; “Atividade com alarme”. |
+| Emergência | `enviar_sinais --state emergencia` | `EMERGENCIA`; “Emergência acionada”. |
+| Operação falha | `enviar_sinais --state porta_aberta --also emergencia` | `EMERGENCIA`; diagnóstico “Operação falha”. |
+| Atividade conflitante | `enviar_sinais --state ativo --also inativo` | `PARADA`; diagnóstico “Sinais de atividade conflitantes”. |
+| Atividade com porta aberta | `enviar_sinais --state ativo --also porta_aberta` | `OPERANDO`; interpretação de atenção, sem inventar uma falha. |
+| Corrente simulada | `enviar_sinais --state ativo --current 12.5` | `12.5 A`, identificada como simulada. |
+| Corrente zero | `enviar_sinais --state inativo --current 0` | `0 A` é um valor válido, diferente de não informado. |
+| Voltar a não informar corrente | `enviar_sinais --state ativo` | A próxima leitura omite corrente; o valor anterior não é reutilizado. |
+| Alternar os seis sinais | `enviar_sinais --state cycle --interval 5` | Um sinal acionado por vez; todas as leituras ficam no histórico. |
+| Publicar uma única leitura | `enviar_sinais --state ativo --count 1` | Envia um evento e encerra. Após 10 s sem novo evento, ocorre timeout. |
+
+O simulador só gera JSON Lines; o publicador envia cada linha à API. `--also` é repetível. `--count -1` mantém a emissão até `Ctrl+C`; `--count 6` limita a seis eventos. `--key=` é próprio deste teste sem chave e evita herdar credenciais de ingestão do ambiente.
+
+Para enviar um snapshot com todos os seis sinais explicitamente desacionados, pare o produtor e use:
+
+```bash
+curl --fail-with-body -sS -X POST "$API/events" \
+  -H 'Content-Type: application/json' \
+  -d '{"machine_id":"CNC-001","states":{"ativo":false,"inativo":false,"emergencia":false,"motor_ligado":false,"alarme":false,"porta_aberta":false}}' | jq
+```
+
+No PowerShell:
+
+```powershell
+$body = @{
+  machine_id = $codigoMaquina
+  states = @{ ativo = $false; inativo = $false; emergencia = $false; motor_ligado = $false; alarme = $false; porta_aberta = $false }
+} | ConvertTo-Json -Depth 4
+Invoke-RestMethod -Method Post -Uri "$api/events" -ContentType 'application/json' -Body $body
+```
+
+O resultado é `PARADA`, com a interpretação “Nenhum sinal acionado”. Isso não fabrica `inativo=true`. Atualize o `machine_id` do exemplo Bash se seu código for diferente.
+
+Para consultar estados, interpretações e histórico pelo terminal:
+
+```bash
+curl --fail-with-body -sS "$API/cncs/statuses" \
+  | jq '.[] | {code, status, states, signal_outputs, analog_signals}'
+curl --fail-with-body -sS "$API/cncs/history?page=1&limit=10" | jq
+```
+
+```powershell
+Invoke-RestMethod "$api/cncs/statuses" | ConvertTo-Json -Depth 10
+Invoke-RestMethod "$api/cncs/history?page=1&limit=10" | ConvertTo-Json -Depth 10
+```
+
+Para testar a perda de comunicação, interrompa somente o produtor e aguarde 10 s mais a próxima consulta da dashboard. O estado passa a `SEM_COMUNICACAO`, e as interpretações ficam marcadas como antigas. Reinicie o produtor para recuperar a comunicação. Para testar indisponibilidade da API, mantenha a página aberta, encerre a API e depois inicie-a novamente com o mesmo comando de simulação.
+
+## 2) Setup para teste integrado com o CLP
+
+Use este caminho para testar IHM/CLP → Opta → USB → ponte Python → API → MySQL → dashboard. Faça a [preparação comum](#setup), instale MySQL 8 e deixe `arduino-cli` no PATH.
+
+### Preparar os sinais do CLP
+
+O firmware espera I1=ativo, I2=inativo, I3=emergência, I4=motor ligado, I5=alarme/erro e I6=porta aberta. I7 fica livre; I8/A7 permanece reservada para corrente, sem leitura física. A origem dos sinais do CLP deve corresponder ao [mapeamento do firmware](#mapeamento-físico-atual-do-opta). O `Main.pdf` descreve o ladder anterior e não inclui porta aberta: não o use como confirmação do novo vínculo.
+
+Cadastre a CNC antes de iniciar a ponte. Mantenha somente um produtor de snapshots por máquina: pare o simulador ao testar os sinais do CLP. Encerre a API SQLite de teste antes de iniciar a API MySQL na mesma porta. No PowerShell, pare o launcher com `-Acao parar` antes de reiniciá-lo sem `-Simular`.
+
+### Setup e inicialização no Linux
+
+#### 1. Configurar MySQL e backend
 
 No Ubuntu/Mint/Debian:
 
@@ -156,7 +392,7 @@ A configuração do backend segue esta prioridade: **ambiente → `backend/.env`
 
 Se `backend/.env` já definir `DATABASE_URL` ou `AUTH_SECRET`, ajuste os valores nesse arquivo, pois eles prevalecem sobre o JSON.
 
-### 2. Iniciar a API e cadastrar a máquina
+#### 2. Iniciar a API e cadastrar a máquina
 
 ```bash
 .venv/bin/python -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000
@@ -178,7 +414,7 @@ curl --fail-with-body -sS -X POST "$API/cncs" \
 
 Guarde o `id` (UUID) e o `code` retornados, ou reutilize os de uma máquina já cadastrada. Os exemplos seguintes usam **`CNC-001`**: substitua-o pelo código real. Códigos excluídos não são reutilizados. O fluxo USB dispensa cadastro de dispositivo ou MAC.
 
-### 3. Gravar o Opta
+#### 3. Gravar o Opta
 
 Com `arduino-cli` no PATH, conecte a placa e feche a ponte ou qualquer monitor que esteja usando a serial:
 
@@ -192,7 +428,7 @@ arduino-cli board list
 
 Use a porta listada para sua placa. O script compila e depois grava; para compilar sem upload, substitua `--porta /dev/ttyACM0` por `--somente-compilar`. Se o CLI estiver instalado localmente, informe `--cli .tools/arduino-cli-linux/arduino-cli`. A porta pode mudar após a gravação.
 
-### 4. Iniciar a ponte USB
+#### 4. Iniciar a ponte USB
 
 ```bash
 .venv/bin/python tools/ponteUsb.py --listar-portas
@@ -203,7 +439,7 @@ Use a porta e o código identificados nos passos anteriores. Sem `--machine-id`,
 
 Se configurar `INGEST_API_KEY` no backend, forneça a mesma chave no ambiente da ponte. Ela lê `backend/.env`, mas não `backend/config.json`.
 
-### 5. Abrir a dashboard
+#### 5. Abrir a dashboard
 
 Em outro terminal:
 
@@ -211,9 +447,9 @@ Em outro terminal:
 npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
-Acesse **http://127.0.0.1:5173/dashboard**. Detalhes da máquina: `/maquinas/CNC-001`; modo TV: `/tv`. Ative os sinais na IHM/CLP e compare os estados na dashboard. Mantenha API, ponte e frontend em execução; encerre com `Ctrl+C`.
+Acesse **http://127.0.0.1:5173/dashboard**. Detalhes da máquina: `/maquinas/CNC-001`; modo TV: `/tv`. Ative os sinais na IHM/CLP e compare os estados e as mensagens no painel **Interações entre sinais**. Teste um sinal por vez e depois as combinações documentadas, comparando também os seis valores nos detalhes da CNC. Mantenha API, ponte e frontend em execução; encerre com `Ctrl+C`.
 
-### Opta no Windows (PowerShell)
+### Setup e inicialização no Windows (PowerShell)
 
 Após a preparação comum, instale e inicie MySQL 8 e instale Arduino CLI. Abra `mysql -u root -p` e execute o SQL do [passo 1](#1-configurar-mysql-e-backend). Prepare `backend/config.json` e ajuste `DATABASE_URL` e `AUTH_SECRET` conforme esse mesmo passo:
 
@@ -257,113 +493,6 @@ Para encerrar, use `Ctrl+C` na ponte e depois:
 .\iniciarLocal.ps1 -Acao parar
 ```
 
-<a id="testar-sem-hardware"></a>
-
-## Método 2: setup com simulação local
-
-Este caminho executa API, banco SQLite e dashboard no computador. O simulador gera os mesmos envelopes `machine_id`/`states` aceitos do Opta, e o publicador os envia para `POST /api/events`.
-
-Após a [preparação comum](#setup), siga os passos abaixo. Não é necessário configurar MySQL, gravar firmware ou iniciar a ponte USB. Para Windows, siga [Simulação no Windows](#simulação-no-windows-powershell).
-
-### 1. Iniciar a API com SQLite
-
-Encerre uma API que já esteja usando a porta 8000. Em um terminal dedicado:
-
-```bash
-mkdir -p .local
-ULTRON_SIMULATION=true DATABASE_URL=sqlite:///./.local/simulacao.db \
-ADMIN_EMAIL= ADMIN_PASSWORD= INGEST_API_KEY= DEVICE_API_KEY= \
-EVENT_OFFLINE_TIMEOUT_SECONDS=10 \
-.venv/bin/python -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000
-```
-
-`ULTRON_SIMULATION=true` impede a leitura de `backend/.env` e `backend/config.json`; as variáveis acima selecionam o banco de simulação e deixam conta administrativa e chaves de ingestão vazias nesse processo. O arquivo `.local/simulacao.db` é criado automaticamente e preserva os dados entre execuções. Ele é separado do MySQL da instalação.
-
-Em outro terminal, confirme a API e o banco:
-
-```bash
-curl --fail-with-body -sS http://127.0.0.1:8000/api/health | jq
-```
-
-O retorno esperado é `{"status":"ok","database":"ok"}`. A documentação interativa fica em **http://127.0.0.1:8000/docs**.
-
-### 2. Cadastrar a máquina simulada
-
-A ingestão exige uma máquina existente. Liste os registros e crie um somente se necessário:
-
-```bash
-API=http://127.0.0.1:8000/api
-curl --fail-with-body -sS "$API/cncs" | jq
-
-# Execute apenas para cadastrar uma nova máquina simulada:
-curl --fail-with-body -sS -X POST "$API/cncs" \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"CNC simulada","description":"Simulacao local sem hardware"}' | jq
-```
-
-Anote o `id` e o `code` retornados. Nos próximos comandos, substitua `CNC-001` pelo código real; mesmo no SQLite, os códigos excluídos não são reutilizados.
-
-### 3. Publicar eventos simulados
-
-Em outro terminal, inicie a geração contínua de eventos:
-
-```bash
-set -o pipefail
-.venv/bin/python tools/simuladorCnc.py --machine-id CNC-001 --state cycle --count -1 --interval 5 \
-  | .venv/bin/python tools/publicarEventos.py --api http://127.0.0.1:8000/api --key=
-```
-
-O simulador escreve JSON Lines em stdout; o publicador lê esse fluxo e envia cada evento à API. `--state cycle` alterna os oito sinais, ativando um por vez a cada 5 s. `--count -1` mantém a geração até `Ctrl+C`. O publicador imprime a resposta de cada envio; `--key=` evita herdar uma chave de ingestão do ambiente nesta simulação sem chave.
-
-Para manter um sinal ativo, troque `--state cycle` por `--state em_execucao`, `--state alarme` ou `--state emergencia`. Para uma sequência finita, use `--count 8`. Cada envio é um snapshot completo dos oito sinais.
-
-### 4. Abrir a dashboard e conferir os estados
-
-Em outro terminal:
-
-```bash
-npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173 --strictPort
-```
-
-Abra **http://127.0.0.1:5173/dashboard** e confira `/maquinas/CNC-001`, `/historico` e `/tv`, ajustando o código na URL. A interface consulta os estados a cada rodada de aproximadamente 5 s; os eventos ficam no histórico da API.
-
-Com a API e o frontend ainda abertos, pare o simulador com `Ctrl+C`: após 10 s sem eventos, a API informa `SEM_COMUNICACAO`, exibido na próxima consulta da dashboard. Reinicie o pipeline para recuperar a comunicação. Encerre API e frontend com `Ctrl+C` nos respectivos terminais.
-
-### Simulação no Windows (PowerShell)
-
-Após a preparação comum, inicie os serviços com:
-
-```powershell
-.\iniciarLocal.ps1 -Simular
-$api = 'http://127.0.0.1:8000/api'
-Invoke-RestMethod "$api/health"
-Invoke-RestMethod "$api/cncs"
-```
-
-O launcher inicia API e frontend em segundo plano, usa `.local/simulacao.db`, ignora a configuração local do backend e define timeout de 10 s. Ele não inicia o produtor de eventos.
-
-Se a máquina ainda não existir, cadastre-a e anote `id` e `code`:
-
-```powershell
-$body = @{ name = 'CNC simulada'; description = 'Simulacao local sem hardware' } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "$api/cncs" -ContentType 'application/json' -Body $body
-```
-
-Com o código retornado no lugar de `CNC-001`, execute o pipeline no PowerShell:
-
-```powershell
-& .\.venv\Scripts\python.exe tools/simuladorCnc.py --machine-id CNC-001 --state cycle --count -1 --interval 5 |
-  & .\.venv\Scripts\python.exe tools/publicarEventos.py --api http://127.0.0.1:8000/api --key=
-```
-
-Abra **http://127.0.0.1:5173/dashboard**. Para testar a perda de comunicação, use `Ctrl+C` no pipeline e mantenha os serviços abertos. Para encerrar API e frontend:
-
-```powershell
-.\iniciarLocal.ps1 -Acao parar
-```
-
-Antes de trocar entre simulação e MySQL pelo launcher, execute `-Acao parar` e inicie novamente com ou sem `-Simular`. Os logs dos serviços ficam em `.local`.
-
 ## Acesso e distribuição da dashboard
 
 As opções abaixo atendem aos dois métodos de setup.
@@ -384,14 +513,14 @@ Na hospedagem web, execute `npm --prefix frontend run build`, sirva `frontend/di
 
 ### Aplicativo desktop (Electron)
 
-Para Electron, `npm --prefix frontend run build:electron` gera caminhos relativos e `npm --prefix frontend run electron:build` também prepara o instalador. O endereço padrão da API desktop é `http://127.0.0.1:8000/api`; informe uma URL absoluta alcançável para usar um servidor remoto. Reinicie a API junto com a atualização do frontend: o monitoramento utiliza as novas consultas coletivas abaixo.
+Para Electron, `npm --prefix frontend run build:electron` gera caminhos relativos e `npm --prefix frontend run electron:build` também prepara o instalador. O endereço padrão da API desktop é `http://127.0.0.1:8000/api`; informe uma URL absoluta alcançável para usar um servidor remoto. Reinicie a API junto com a atualização do frontend: o monitoramento utiliza as consultas coletivas e as interpretações `signal_outputs` descritas abaixo.
 
 ## Eventos e consultas
 
 A API aceita eventos de qualquer produtor, inclusive `curl` ou simulador:
 
 ```json
-{"machine_id":"CNC-001","states":{"em_execucao":true,"alarme":false}}
+{"machine_id":"CNC-001","states":{"ativo":true,"inativo":false,"emergencia":false,"motor_ligado":true,"alarme":false,"porta_aberta":false}}
 ```
 
 Cada envio representa um snapshot completo: estados ausentes ficam não informados. `event_id` e `timestamp` são opcionais. Reenvios com a mesma chave e conteúdo não duplicam registros nem renovam presença; conteúdo diferente retorna 409. Leituras antigas não revertem o estado atual.
@@ -401,10 +530,10 @@ Por padrão, sem eventos novos por 90 s, o estado passa a `SEM_COMUNICACAO`; o s
 | Método | Rota | Uso |
 |---|---|---|
 | POST / GET | `/api/cncs` | Cadastrar / listar máquinas |
-| GET | `/api/cncs/statuses` | Estados da frota em uma requisição, sem carregar histórico |
+| GET | `/api/cncs/statuses` | Estados e `signal_outputs` da frota em uma requisição |
 | GET | `/api/cncs/history?page=1&limit=30` | Histórico global paginado; aceita `machine_id`, `start` e `end` |
 | GET / PUT / DELETE | `/api/cncs/{uuid}` | Consultar / editar / excluir |
-| GET | `/api/cncs/{uuid}/status` | Estados e última comunicação |
+| GET | `/api/cncs/{uuid}/status` | Estados, interpretações e última comunicação |
 | GET | `/api/cncs/{uuid}/history?page=1&limit=50` | Histórico paginado |
 | GET | `/api/cncs/{uuid}/utilization` | Utilização nas últimas 24 h |
 | POST | `/api/events` | Enviar estados |
@@ -448,4 +577,5 @@ legacy/     Referências de versões anteriores
 - [Contrato de eventos e guia da equipe](docs/guides/guiaEquipe.md)
 - [Integração com IHM/CLP e Opta](docs/guides/integracaoOpta.md)
 - [Teste de responsividade](docs/guides/testesResponsividade.md)
+- [Relatório de sinais operacionais e corrente](docs/reports/sinaisOperacionaisCorrente.md)
 - [Contexto técnico do projeto](docs/CONTEXTO_PROJETO.md)

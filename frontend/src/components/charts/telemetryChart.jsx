@@ -36,7 +36,7 @@ export default function TelemetryChart({ machine }) {
   ].sort();
   const options = [
     ...ANALOG,
-    { key: "machineActive", label: "Ciclo da máquina", digital: true },
+    { key: "machineActive", label: "Atividade da máquina", digital: true },
     ...signals.map((signal) => ({
       key: `digital:${signal}`,
       signal,
@@ -102,6 +102,12 @@ export default function TelemetryChart({ machine }) {
         <p role="status" className="text-xs text-amber-400">
           Comunicação indisponível ou dados desatualizados. Exibindo as últimas
           leituras conhecidas.
+        </p>
+      )}
+      {metric.key === "current" && machine.currentSource === "simulated" && (
+        <p className="text-xs text-amber-500">
+          Última corrente recebida: valor simulado, sem medição física na
+          entrada I8.
         </p>
       )}
       {count === 0 ? (

@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 from schemas.common import UTCModel
+from schemas.signalOutput import SignalOutput
 
 
 class CNCCreate(BaseModel):
@@ -27,6 +28,14 @@ class CNCResponse(UTCModel):
     created_at: datetime
 
 
+class SignalDiagnostic(BaseModel):
+    code: str
+    severity: str
+    title: str
+    message: str
+    signals: list[str]
+
+
 class CNCStatusResponse(UTCModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -40,6 +49,8 @@ class CNCStatusResponse(UTCModel):
     last_seen: Optional[datetime] = None
     online: bool
     states: Dict[str, bool] = Field(default_factory=dict)
+    diagnostics: list[SignalDiagnostic] = Field(default_factory=list)
+    signal_outputs: list[SignalOutput] = Field(default_factory=list)
     gateway_online: bool  # Compatibility alias; presence is machine-based.
     last_known_status: str = "SEM_COMUNICACAO"
     telemetry_timestamp: Optional[datetime] = None

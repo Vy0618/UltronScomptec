@@ -28,9 +28,8 @@ bool parseHttp(const std::string& bytes, ultron::HttpResponse& response, bool ho
   return ultron::readHttpResponse(client, [&]() { return now; }, [&]() { ++now; }, 100, response);
 }
 int main(int argc, char** argv) {
-  // Every input combination must retain eight independent booleans on USB.
-  const char* signalNames[] = {"em_execucao", "pausa", "parada", "emergencia",
-                               "motor_ligado", "automatico", "manual", "alarme"};
+  // Every port combination preserves six signals and never treats I8 as digital/current.
+  const char* signalNames[] = {"ativo", "inativo", "emergencia", "motor_ligado", "alarme", "porta_aberta"};
   ultron::TelemetryCore<2> monitorCore(1000, 15000);
   for (unsigned bits = 0; bits < 256; ++bits) {
     CncSnapshot s;
@@ -44,18 +43,20 @@ int main(int argc, char** argv) {
     JsonDocument json; assert(!deserializeJson(json, wire));
     auto payload = json["payload"];
     assert(json["machine_id"] == "1");
-    assert(payload["digital_signals"].size() == 8);
-    assert(payload["machine_active"].as<bool>() == bool(bits & 1));
+    assert(payload["digital_signals"].size() == 6);
+    assert(payload["machine_active"].as<bool>() == (bool(bits & 1) && !(bits & 2)));
     assert(payload["voltage_24v"].isNull());
     assert(payload["analog_signals"].size() == 0);
-    assert(payload["extra_signals"]["profile"] == "boolean_monitor_v1");
-    for (unsigned i = 0; i < 8; ++i) {
+    assert(payload["extra_signals"]["profile"] == "six_signals_current_reserved_v2");
+    assert(payload["extra_signals"]["current_input"]["input"] == "I8");
+    assert(payload["extra_signals"]["current_input"]["source"] == "unavailable");
+    assert(payload["extra_signals"]["current_input"]["physical_enabled"] == false);
+    assert(payload["extra_signals"]["entradas_brutas"].size() == 6);
+    for (unsigned i = 0; i < 6; ++i) {
       assert(payload["digital_signals"][signalNames[i]].is<bool>());
       assert(payload["digital_signals"][signalNames[i]].as<bool>() == bool(bits & (1U << i)));
       char pin[3] = {'I', char('1' + i), '\0'};
       assert(payload["extra_signals"]["entradas_brutas"][pin].as<bool>() == bool(bits & (1U << i)));
-      char address[5] = {'D', '0', '0', char('0' + i), '\0'};
-      assert(payload["extra_signals"]["clp_inputs"][address].as<bool>() == bool(bits & (1U << i)));
     }
     if (bits == 255 && argc > 3) {
       std::ofstream output(argv[3]); assert(output.good());
@@ -138,7 +139,7 @@ int main(int argc, char** argv) {
   assert(!usb.takeUsb(0, usbReading));
   assert(usb.enqueue(sample(0)));
   assert(!usb.enqueue(sample(20)));
-  auto active = sample(30, 0x31);
+  auto active = sample(30, 0x09);
   assert(usb.enqueue(active));
   assert(usb.takeUsb(30, usbReading) && usbReading.sequence == 1);
   assert(usb.takeUsb(30, usbReading) && usbReading.sequence == 2);
@@ -166,7 +167,7 @@ int main(int argc, char** argv) {
   if (argc > 1) {
     std::ofstream output(argv[1]); assert(output.good()); output << "[";
     ultron::TelemetryCore<16> fixture(1000, 15000); registerCore(fixture, 0);
-    const uint8_t signals[] = {0x04, 0x31, 0x02, 0x08, 0x80, 0x40};
+    const uint8_t signals[] = {0x02, 0x09, 0x02, 0x04, 0x10, 0x20};
     for (unsigned i = 0; i < 6; ++i) {
       auto s = sample(i * 1000, signals[i]);
       assert(fixture.enqueue(s) && fixture.prepare(s.capturedMs));

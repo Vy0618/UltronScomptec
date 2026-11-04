@@ -10,6 +10,114 @@ import {
 
 const timestamp = "2026-10-21T15:00:00Z";
 
+test("current simulation reaches the dashboard with source and zero distinct from unknown", async () => {
+  const snapshot = {
+    id: "current",
+    code: "CNC-001",
+    name: "CNC",
+    status: "OPERANDO",
+    online: true,
+    states: { ativo: true },
+    analog_signals: { current: 12.5 },
+    extra_signals: {
+      current_input: {
+        input: "I8",
+        source: "simulated",
+        physical_enabled: false,
+      },
+    },
+  };
+  const [machine] = await loadMachineStatuses(async () => [snapshot]);
+  assert.equal(machine.current, 12.5);
+  assert.equal(machine.currentSource, "simulated");
+  const [zero] = await loadMachineStatuses(async () => [
+    { ...snapshot, analog_signals: { current: 0 } },
+  ]);
+  assert.equal(zero.current, 0);
+  const [missing] = await loadMachineStatuses(async () => [
+    { ...snapshot, analog_signals: {}, extra_signals: {} },
+  ]);
+  assert.equal(missing.current, null);
+  assert.equal(missing.currentSource, "unknown");
+});
+
+test("a combined diagnosis notifies even when emergency status was already active", async () => {
+  const diagnosis = {
+    code: "PORTA_ABERTA_EMERGENCIA",
+    severity: "EMERGENCIA",
+    title: "Operação falha",
+    message: "Porta aberta e emergência acionada na mesma leitura.",
+    signals: ["porta_aberta", "emergencia"],
+  };
+  const snapshot = {
+    id: "a",
+    code: "CNC-001",
+    name: "CNC",
+    status: "EMERGENCIA",
+    online: true,
+    states: { emergencia: true, porta_aberta: false },
+    diagnostics: [],
+    last_seen: timestamp,
+    status_since: timestamp,
+    telemetry_timestamp: timestamp,
+  };
+  const before = await loadMachineStatuses(async () => [snapshot]);
+  const observed = "2026-10-21T15:01:00Z";
+  const after = await loadMachineStatuses(
+    async () => [
+      {
+        ...snapshot,
+        states: { emergencia: true, porta_aberta: true },
+        diagnostics: [diagnosis],
+        telemetry_timestamp: observed,
+      },
+    ],
+    before,
+  );
+  assert.deepEqual(after[0].diagnostics, [diagnosis]);
+  const notices = monitoringTransitions(before, after).notices;
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].title, "Operação falha");
+  assert.equal(notices[0].occurredAt, observed);
+  assert.equal(monitoringTransitions(after, after).notices.length, 0);
+  const alerts = monitoringAlerts(after);
+  assert.equal(alerts[0].occurredAt, observed);
+  assert.deepEqual(alerts[0].diagnostics, [diagnosis]);
+  assert.equal(
+    monitoringAlerts(
+      [{ ...after[0], telemetryTimestamp: "2026-10-21T15:02:00Z" }],
+      alerts,
+    )[0].occurredAt,
+    observed,
+  );
+  assert.deepEqual(monitoringAlerts(markStale(after), alerts)[0].diagnostics, [
+    diagnosis,
+  ]);
+  assert.equal(monitoringAlerts(markStale(after), alerts)[0].stale, true);
+  assert.equal(
+    monitoringTransitions(after, markStale(before)).notices.length,
+    0,
+  );
+});
+
+test("conflicting activity signals have an alert without treating inactive as powered off", () => {
+  const machine = {
+    id: "CNC-001",
+    status: "PARADA",
+    communicationStatus: "ONLINE",
+    diagnostics: [
+      {
+        code: "ATIVIDADE_CONFLITANTE",
+        title: "Sinais de atividade conflitantes",
+      },
+    ],
+  };
+  assert.equal(
+    monitoringAlerts([machine])[0].diagnostics[0].code,
+    "ATIVIDADE_CONFLITANTE",
+  );
+});
+
 test("bulk polling fetches only states and reuses unchanged machine references", async () => {
   const calls = [];
   const statuses = [

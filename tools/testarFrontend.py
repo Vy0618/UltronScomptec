@@ -9,9 +9,14 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
+from types import SimpleNamespace
+import sys
 from urllib.parse import parse_qs, urlparse
 
 from playwright.sync_api import sync_playwright
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+from services.signalOutputs import derive_signal_outputs
 
 
 def run(url, output, executable=None):
@@ -26,10 +31,16 @@ def run(url, output, executable=None):
 
     def signals(index):
         status = states[index % len(states)]
-        return {"em_execucao": status == "OPERANDO", "emergencia": status == "EMERGENCIA", "alarme": status == "ALARME", "pausa": False, "motor_ligado": True, "automatico": True, "manual": False, "parada": status == "PARADA"}
+        return {"ativo": status == "OPERANDO", "inativo": status == "PARADA", "emergencia": status == "EMERGENCIA", "motor_ligado": True, "alarme": status == "ALARME", "porta_aberta": status == "EMERGENCIA"}
 
     def reading(index, sample):
-        return {"id": f"reading-{index}-{sample}", "machine_id": f"test-{index}", "timestamp": timestamp(sample), "states": signals(index), "analog_signals": {}, "voltage_24v": None}
+        data = {"id": f"reading-{index}-{sample}", "machine_id": f"test-{index}", "timestamp": timestamp(sample), "states": signals(index), "analog_signals": {"current": 12.5} if index == 0 else {}, "voltage_24v": None}
+        data["signal_outputs"] = outputs(data)
+        return data
+
+    def outputs(data):
+        return derive_signal_outputs(SimpleNamespace(digital_signals=data["states"],
+            machine_active=data["states"].get("ativo", False), analog_signals=data.get("analog_signals", {}), extra_signals=data.get("extra_signals", {})))
 
     def mock(route):
         parsed = urlparse(route.request.url)
@@ -42,6 +53,12 @@ def run(url, output, executable=None):
             return
         if path == "/api/cncs/statuses":
             data = [{**machine, "status": states[i % len(states)], "online": i % len(states) not in (4, 5), "states": signals(i), "analog_signals": {}, "last_seen": timestamp(2), "telemetry_timestamp": timestamp(2), "status_since": timestamp(300), "last_known_status": "OPERANDO"} for i, machine in enumerate(machines)]
+            for i, item in enumerate(data):
+                item["diagnostics"] = [{"code": "PORTA_ABERTA_EMERGENCIA", "severity": "EMERGENCIA", "title": "Operação falha", "message": "Porta aberta e emergência acionada na mesma leitura.", "signals": ["porta_aberta", "emergencia"]}] if item["status"] == "EMERGENCIA" else []
+                if i == 0:
+                    item["analog_signals"] = {"current": 12.5}
+                    item["extra_signals"] = {"current_input": {"input": "I8", "physical_enabled": False, "unit": "A", "source": "simulated"}}
+                item["signal_outputs"] = outputs(item)
         elif path == "/api/cncs/history":
             page = int(params.get("page", [1])[0]); limit = int(params.get("limit", [30])[0])
             machine_id = params.get("machine_id", [None])[0]
@@ -84,6 +101,10 @@ def run(url, output, executable=None):
                 if path == "/maquinas/CNC-001":
                     page.get_by_role("heading", name=label, exact=True).wait_for()
                     page.get_by_text("Últimas 100 leituras", exact=False).wait_for()
+                    page.get_by_role("heading", name="Corrente · I8 reservada", exact=True).wait_for()
+                    page.get_by_text("Valor simulado recebido por comando; não é uma medição física.", exact=True).wait_for()
+                    for signal_label in ("Ativo", "Inativo", "Emergência", "Motor ligado", "Alarme / erro", "Porta aberta"):
+                        assert page.get_by_text(signal_label, exact=True).count() > 0
                 else:
                     if path == "/dashboard":
                         page.get_by_text(label, exact=True).wait_for()
@@ -93,6 +114,7 @@ def run(url, output, executable=None):
                     page.get_by_role("button", name="Próxima", exact=True).wait_for()
                 if path == "/dashboard":
                     page.get_by_text("Atenção Imediata", exact=True).wait_for()
+                    page.get_by_role("heading", name="Interações entre sinais", exact=True).wait_for()
                 dimensions = page.evaluate("""() => ({width: document.documentElement.clientWidth, content: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)})""")
                 if dimensions["content"] > dimensions["width"] + 1:
                     page.screenshot(path=str(output / f"falha-{width}-{path.replace('/', '_')}.png"), full_page=True)

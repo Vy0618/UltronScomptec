@@ -13,7 +13,7 @@ from schemas.observation import Observation
 from services.clock import utcnow, normalize_datetime, OFFLINE_TIMEOUT_SECONDS, MAX_CLOCK_SKEW_SECONDS
 from services.ingestAuth import require_ingest_key
 from services.eventRepository import latest_event
-from services.machineState import derive_status
+from services.machineState import derive_status, machine_active_from_states
 
 router = APIRouter(prefix="/events", tags=["Machine events"])
 
@@ -78,8 +78,9 @@ def receive_event(data: EventCreate, db: Session = Depends(get_db)):
         raise HTTPException(404, "Máquina não encontrada; cadastre-a em /api/cncs")
     normalized = Observation(
         event_id=data.event_id, timestamp=data.timestamp,
-        machine_active=data.states.get("em_execucao", data.states.get("ciclo", False)),
+        machine_active=machine_active_from_states(data.states),
         digital_signals=data.states,
+        analog_signals=data.analog_signals, extra_signals=data.extra_signals,
     )
     reading, _ = store_event(db, machine, normalized, utcnow())
     db.commit()

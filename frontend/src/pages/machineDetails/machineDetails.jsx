@@ -255,6 +255,8 @@ export default function MachineDetails() {
         </div>
       </header>
 
+      <CncSignals machine={machine} />
+
       {/* Problem Alert Banner if critical */}
       <MachineIncidents
         key={machine.backendId || machine.id}
@@ -360,7 +362,9 @@ export default function MachineDetails() {
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${telemetrySummary?.current?.badgeBg}`}
               >
-                {telemetrySummary?.current?.label}
+                {machine.currentSource === "simulated"
+                  ? "Simulada"
+                  : telemetrySummary?.current?.label}
               </span>
             </div>
 
@@ -679,8 +683,6 @@ export default function MachineDetails() {
           histórico completo.
         </p>
       )}
-
-      <CncSignals machine={machine} />
 
       {/* Machine Occurrences / History Section */}
       <section id="ocorrencias" className="panel p-5 space-y-3">

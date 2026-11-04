@@ -18,14 +18,41 @@ from ponteUsb import Gateway, StdoutEvents, reading_from
 
 def test_simulator_emits_valid_envelopes_without_network_or_collector_identity():
     result = subprocess.run([sys.executable, str(ROOT / 'tools/simuladorCnc.py'),
-        '--machine-id', 'CNC-001', '--state', 'cycle', '--count', '8', '--interval', '0'],
+        '--machine-id', 'CNC-001', '--state', 'cycle', '--count', '6', '--interval', '0'],
         capture_output=True, text=True, check=True)
     assert result.stderr == ''
     events = [EventCreate.model_validate_json(line) for line in result.stdout.splitlines()]
-    assert len(events) == 8 and len({event.event_id for event in events}) == 8
+    assert len(events) == 6 and len({event.event_id for event in events}) == 6
     assert all(event.machine_id == 'CNC-001' for event in events)
     assert {next(key for key, active in event.states.items() if active) for event in events} == {
-        'em_execucao', 'pausa', 'parada', 'emergencia', 'motor_ligado', 'automatico', 'manual', 'alarme'}
+        'ativo', 'inativo', 'emergencia', 'motor_ligado', 'alarme', 'porta_aberta'}
+
+
+def test_simulator_can_send_simultaneous_door_and_emergency_without_inventing_activity():
+    result = subprocess.run([sys.executable, str(ROOT / 'tools/simuladorCnc.py'),
+        '--machine-id', 'CNC-001', '--state', 'porta_aberta', '--also', 'emergencia', '--count', '1'],
+        capture_output=True, text=True, check=True)
+    event = EventCreate.model_validate_json(result.stdout)
+    assert event.states == {'ativo': False, 'inativo': False, 'emergencia': True,
+                            'motor_ligado': False, 'alarme': False, 'porta_aberta': True}
+    assert event.analog_signals == {}
+
+
+@pytest.mark.parametrize('amps', ['0', '12.5'])
+def test_simulated_current_has_explicit_source_and_reserved_input(amps):
+    result = subprocess.run([sys.executable, str(ROOT / 'tools/simuladorCnc.py'),
+        '--machine-id', 'CNC-001', '--current', amps], capture_output=True, text=True, check=True)
+    event = EventCreate.model_validate_json(result.stdout)
+    assert event.analog_signals == {'current': float(amps)}
+    assert event.extra_signals['current_input'] == {
+        'input': 'I8', 'physical_enabled': False, 'unit': 'A', 'source': 'simulated'}
+
+
+@pytest.mark.parametrize('amps', ['-1', 'nan', 'inf'])
+def test_simulator_rejects_invalid_current_without_emitting_an_event(amps):
+    result = subprocess.run([sys.executable, str(ROOT / 'tools/simuladorCnc.py'),
+        '--machine-id', 'CNC-001', '--current', amps], capture_output=True, text=True)
+    assert result.returncode == 2 and result.stdout == ''
 
 
 def test_publisher_reads_json_lines_and_keeps_responses_in_stdout(monkeypatch, capsys):

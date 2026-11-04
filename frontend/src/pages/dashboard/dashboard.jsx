@@ -21,6 +21,7 @@ import { useMonitoring, SCOPE_TYPES } from "../../contexts/monitoringContext";
 import api from "../../services/api";
 import { useApiQuery } from "../../hooks/useApiQuery";
 import { readingEvent } from "../../services/telemetry";
+import FleetSignalOutputs from "../../components/signalOutputs/fleetSignalOutputs";
 
 function MetricButton({
   label,
@@ -358,6 +359,12 @@ export default function Dashboard() {
       </div>
 
       {/* CNC Machines Fleet */}
+      <FleetSignalOutputs
+        machines={machines}
+        loading={loading}
+        error={connectionError}
+      />
+
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

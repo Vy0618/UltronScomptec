@@ -2,41 +2,34 @@
   "machine_active": true,
   "voltage_24v": null,
   "digital_signals": {
-    "em_execucao": true,
-    "pausa": false,
-    "parada": false,
+    "ativo": true,
+    "inativo": false,
     "emergencia": false,
     "motor_ligado": true,
-    "automatico": true,
-    "manual": false,
-    "alarme": false
+    "alarme": false,
+    "porta_aberta": false
   },
   "analog_signals": {},
   "extra_signals": {
-    "profile": "boolean_monitor_v1",
+    "profile": "six_signals_current_reserved_v2",
     "uptime_seconds": 1,
     "capturado_millis": 1000,
     "entradas_brutas": {
       "I1": true,
       "I2": false,
       "I3": false,
-      "I4": false,
-      "I5": true,
-      "I6": true,
-      "I7": false,
-      "I8": false
+      "I4": true,
+      "I5": false,
+      "I6": false
     },
     "transport": "usb_serial",
     "amostras_descartadas": 0,
-    "clp_inputs": {
-      "D000": true,
-      "D001": false,
-      "D002": false,
-      "D003": false,
-      "D004": true,
-      "D005": true,
-      "D006": false,
-      "D007": false
+    "spare_input": "I7",
+    "current_input": {
+      "input": "I8",
+      "physical_enabled": false,
+      "unit": "A",
+      "source": "unavailable"
     }
   }
 }

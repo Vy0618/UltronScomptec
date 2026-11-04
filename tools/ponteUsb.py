@@ -134,8 +134,14 @@ class Gateway:
         data['timestamp'] = reading.captured_at  # Recepção USB UTC, preservada nos retries.
         data['extra_signals']['boot_id'] = self.session
         if self.machine_id or self.use_frame_machine:
+            analog = data.get('analog_signals', {})
+            extra = data.get('extra_signals', {})
             data = {'machine_id': self.machine_id or reading.machine_id or '1', 'states': data.get('digital_signals', {}),
                     'event_id': data['event_id'], 'timestamp': data['timestamp']}
+            if analog:
+                data['analog_signals'] = analog
+            if 'current_input' in extra:
+                data['extra_signals'] = {'current_input': extra['current_input']}
         self.previous_payload = copy.deepcopy(data)
         return data
 

@@ -4,6 +4,7 @@ import { Duration, RelativeTime } from "../liveTime/liveTime";
 import { formatDateTime, formatDuration } from "../../utils/time";
 import { getStatusConfig, MACHINE_STATUS } from "../../utils/status";
 import { isActiveProblem } from "../../utils/problems";
+import SignalOutputList from "../signalOutputs/signalOutputList";
 
 const COPY = {
   [MACHINE_STATUS.EMERGENCIA]: [
@@ -147,6 +148,9 @@ export default function OccurrenceCard({ event, machine }) {
         </div>
 
         {/* Event description */}
+        <div className="mt-3">
+          <SignalOutputList outputs={event.signalOutputs} limit={2} />
+        </div>
         <div className="mt-3.5 rounded-lg border border-base-border/50 bg-base-surface/50 p-2.5 text-xs text-text-secondary">
           <p className="font-medium text-text-primary">
             {isSample || isTelemetryAnomaly || isUnusual || isReassigned ? (

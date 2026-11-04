@@ -1,5 +1,6 @@
 #pragma once
 #include "telemetryCore.h"
+#include "signalProfile.h"
 // The Opta GCC 7 runtime has no complete <system_error>/<ostream> support.
 // We serialize to fixed buffers and do not need iostream integration.
 #define ARDUINOJSON_ENABLE_STD_STREAM 0
@@ -7,23 +8,25 @@
 
 namespace ultron {
 inline void writeSnapshot(JsonObject document, const CncSnapshot& s) {
-  document["machine_active"] = bool(s.activeInputs & 1U);
+  document["machine_active"] = bool(s.activeInputs & 1U) && !(s.activeInputs & 2U);
   document["voltage_24v"] = nullptr;
   JsonObject digital = document["digital_signals"].to<JsonObject>();
-  const char* names[] = {"em_execucao", "pausa", "parada", "emergencia",
-                         "motor_ligado", "automatico", "manual", "alarme"};
-  for (uint8_t i = 0; i < 8; ++i) digital[names[i]] = bool(s.activeInputs & (1U << i));
+  for (uint8_t i = 0; i < DIGITAL_SIGNAL_COUNT; ++i)
+    digital[DIGITAL_SIGNAL_NAMES[i]] = bool(s.activeInputs & (1U << i));
   document["analog_signals"].to<JsonObject>();
   JsonObject extra = document["extra_signals"].to<JsonObject>();
-  extra["profile"] = "boolean_monitor_v1";
+  extra["profile"] = SIGNAL_PROFILE;
   extra["uptime_seconds"] = s.uptimeMs / 1000;
   extra["capturado_millis"] = s.capturedMs;
   JsonObject raw = extra["entradas_brutas"].to<JsonObject>();
   const char* inputs[] = {"I1", "I2", "I3", "I4", "I5", "I6", "I7", "I8"};
-  for (uint8_t i = 0; i < 8; ++i) raw[inputs[i]] = bool(s.rawInputs & (1U << i));
-  JsonObject clp = extra["clp_inputs"].to<JsonObject>();
-  const char* addresses[] = {"D000", "D001", "D002", "D003", "D004", "D005", "D006", "D007"};
-  for (uint8_t i = 0; i < 8; ++i) clp[addresses[i]] = bool(s.activeInputs & (1U << i));
+  for (uint8_t i = 0; i < DIGITAL_SIGNAL_COUNT; ++i) raw[inputs[i]] = bool(s.rawInputs & (1U << i));
+  extra["spare_input"] = inputs[SPARE_INPUT_NUMBER - 1];
+  JsonObject current = extra["current_input"].to<JsonObject>();
+  current["input"] = inputs[CURRENT_INPUT_NUMBER - 1];
+  current["physical_enabled"] = CURRENT_PHYSICAL_ENABLED;
+  current["unit"] = "A";
+  current["source"] = "unavailable";
 }
 
 inline bool serializeUsbReading(const Reading& reading, const char* firmware, uint64_t discarded,

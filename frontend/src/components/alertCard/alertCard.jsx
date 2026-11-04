@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { getStatusConfig } from "../../utils/status";
 import { Duration } from "../liveTime/liveTime";
+import SignalOutputList from "../signalOutputs/signalOutputList";
+import { signalOutputsFor } from "../../services/signalOutputs";
 
 export default function AlertCard({ alert }) {
   const cfg = getStatusConfig(alert.severity);
@@ -44,6 +46,14 @@ export default function AlertCard({ alert }) {
             {[alert.companyName, alert.unitName].filter(Boolean).join(" · ")}
           </p>
         )}
+        <div className="mt-2">
+          <SignalOutputList
+            outputs={signalOutputsFor(alert)}
+            stale={alert.stale}
+            limit={2}
+            compact
+          />
+        </div>
         {alert.stale && (
           <p className="mt-1 text-[11px] text-amber-300">
             Último alerta conhecido. Aguarde a comunicação para confirmar o

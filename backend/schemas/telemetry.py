@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from schemas.common import UTCModel
+from schemas.signalOutput import SignalOutput
 
 
 from schemas.observation import Observation as TelemetryCreate
@@ -21,6 +22,7 @@ class TelemetryResponse(UTCModel):
     digital_signals: Optional[Dict[str, Any]] = None
     analog_signals: Optional[Dict[str, Any]] = None
     extra_signals: Optional[Dict[str, Any]] = None
+    signal_outputs: list[SignalOutput] = Field(default_factory=list)
 
 
 class TelemetryHistoryResponse(BaseModel):

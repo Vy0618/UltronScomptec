@@ -16,7 +16,7 @@ void telemetryPublish(const CncSnapshot& snapshot) { observed = snapshot; }
 int main() {
   memset(hostModes, -1, sizeof(hostModes));
   cncSetup();
-  assert(observed.activeInputs == INPUT_ACTIVE_LOW_MASK);
+  assert(observed.activeInputs == (INPUT_ACTIVE_LOW_MASK & ultron::DIGITAL_INPUT_MASK));
   for (uint8_t i = 0; i < 8; ++i) assert(hostModes[i] == INPUT);
   assert(hostModes[D0] == -1 && hostModes[D1] == -1 && hostModes[D2] == -1);
   assert(hostWrites == 0);
@@ -24,14 +24,17 @@ int main() {
     memset(hostPins, 0, sizeof(hostPins));
     hostPins[i] = HIGH;
     ++hostMillis; cncLoop();
-    assert(observed.rawInputs == (1U << i));
-    assert(observed.activeInputs == ((1U << i) ^ INPUT_ACTIVE_LOW_MASK));
+    const uint8_t expected = (1U << i) & ultron::DIGITAL_INPUT_MASK;
+    assert(observed.rawInputs == expected);
+    assert(observed.activeInputs == (expected ^ (INPUT_ACTIVE_LOW_MASK & ultron::DIGITAL_INPUT_MASK)));
   }
   for (uint8_t i = 0; i < 8; ++i) hostPins[i] = HIGH;
   ++hostMillis; cncLoop();
-  assert(observed.activeInputs == (255 ^ INPUT_ACTIVE_LOW_MASK));
+  assert(observed.activeInputs == (ultron::DIGITAL_INPUT_MASK ^ (INPUT_ACTIVE_LOW_MASK & ultron::DIGITAL_INPUT_MASK)));
+  static_assert(ultron::CURRENT_INPUT_NUMBER == 8 && !ultron::CURRENT_PHYSICAL_ENABLED,
+                "I8 must stay reserved with physical current disabled");
   assert(hostWrites == 0);
-  puts("PASS monitor: I1-I8 / simultaneous inputs / initial state / no output writes");
+  puts("PASS monitor: six digital signals / I7-I8 ignored / I8 reserved / no output writes");
 
   InputMonitor filter;
   const uint32_t times[8] = {20, 0, 0, 0, 0, 0, 0, 0};

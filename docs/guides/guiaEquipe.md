@@ -18,10 +18,18 @@ A coleta física para CNC Mitsubishi M60, M70 e M80 continua possível por IHM/C
 ## Contrato
 
 ```json
-{"machine_id":"CNC-001","states":{"em_execucao":true,"alarme":false}}
+{"machine_id":"CNC-001","states":{"ativo":true,"inativo":false,"emergencia":false,"motor_ligado":true,"alarme":false,"porta_aberta":false}}
 ```
 
-`machine_id` aceita UUID ou código da máquina cadastrada em `/api/cncs`. Cada evento é um snapshot completo: não há merge com estados anteriores. Ausente significa não informado. Os estados conhecidos são execução, pausa, parada, emergência, motor ligado, automático, manual e alarme; nomes adicionais são preservados e exibidos.
+`machine_id` aceita UUID ou código da máquina cadastrada em `/api/cncs`. Cada evento é um snapshot completo: não há merge com estados anteriores. Ausente significa não informado. O perfil principal tem `ativo`, `inativo`, `emergencia`, `motor_ligado`, `alarme` e `porta_aberta`; nomes adicionais e os sinais legados continuam preservados e exibidos.
+
+`ativo` e `inativo` são entradas independentes, sem deduzir uma pelo complemento da outra. Emergência e alarme têm prioridade; inativo impede classificar como operando. A consulta de status retorna `diagnostics`: porta aberta com emergência resulta em **Operação falha**; ativo e inativo simultâneos resultam em **Sinais de atividade conflitantes**. Os diagnósticos são derivados da mesma observação, não alteram os sinais nem exigem migração do banco. A dashboard notifica uma nova combinação mesmo que o status resumido não mude e identifica como antigos os diagnósticos sem comunicação atual.
+
+As consultas de estado e de histórico também expõem `signal_outputs`: uma lista de interpretações com `code`, `level` (`info`, `attention` ou `critical`), `title`, `message` e `signals`. A fonte única é `backend/services/signalOutputs.py`. O painel **Interações entre sinais** da dashboard filtra por máquina e nível, pagina seis máquinas e oferece acesso a todas as interpretações nos detalhes. Condições sem falha, leitura parcial e corrente simulada também geram saídas. Os outputs não mudam o estado nem acionam relés; sem comunicação atual, ficam identificados como antigos. Interpretações informativas não geram toasts repetidos.
+
+O firmware usa I1–I6 para os seis sinais na ordem do perfil; I7 fica livre e I8/A7 é reservada para corrente, sem leitura física. O `Main.pdf` ainda representa o mapeamento anterior e não inclui porta aberta: os sinais disponibilizados pelo CLP devem corresponder ao novo perfil antes do ensaio físico. O simulador emite os seis sinais e aceita `--also emergencia`, por exemplo, junto de `--state porta_aberta`.
+
+`analog_signals` e `extra_signals` são campos opcionais do evento. `analog_signals.current` é uma corrente finita e não negativa em A; números como strings, booleanos e null são rejeitados. Sem leitura, omitir a chave, sem representar ausência como zero. `--current 12.5` no simulador envia corrente marcada por `extra_signals.current_input.source="simulated"`. Firmware, ponte, API, histórico e dashboard preservam o valor e sua origem. I8 não é consultada digitalmente nem por ADC enquanto a medição física estiver desativada.
 
 `event_id` e `timestamp` são opcionais. Repetir a chave do evento com o mesmo conteúdo não duplica a leitura nem renova sua presença; mudar o conteúdo retorna 409. A idempotência do contrato genérico é por máquina. Leituras antigas entram no histórico sem reverter o estado atual. Booleanos como strings ou números retornam 422.
 

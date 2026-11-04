@@ -10,6 +10,7 @@ import {
 } from "../../utils/status";
 import { Duration, RelativeTime } from "../liveTime/liveTime";
 import { isActiveProblem } from "../../utils/problems";
+import { SignalOutputSummary } from "../signalOutputs/signalOutputList";
 
 function MachineCard({ machine, contextLabel }) {
   const navigate = useNavigate();
@@ -94,6 +95,9 @@ function MachineCard({ machine, contextLabel }) {
         {/* Telemetry 2x2 Strip (Current, Power, Temp, Voltage) */}
         {!disconnected && machine.current !== null && (
           <div className="mt-3.5 space-y-1.5">
+            {machine.currentSource === "simulated" && (
+              <p className="text-xs text-amber-500">Corrente simulada</p>
+            )}
             <div className="grid grid-cols-2 gap-2 rounded-lg border border-base-border/60 bg-base-surface/60 p-2.5 text-xs">
               <div className="flex items-center justify-between min-w-0">
                 <span className="flex items-center gap-1 text-[11px] text-text-muted">
@@ -167,6 +171,8 @@ function MachineCard({ machine, contextLabel }) {
           </div>
         )}
       </div>
+
+      <SignalOutputSummary machine={machine} />
 
       {/* Footer: Communication timestamp & Arrow */}
       <div className="mt-4 flex items-center justify-between border-t border-base-border/70 pt-3 text-[11px] text-text-muted">

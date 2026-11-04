@@ -126,6 +126,7 @@ def test_default_arduino_id_one_resolves_to_first_machine(event_api):
 
 
 @pytest.mark.parametrize(('state', 'expected'), [
+    ('ativo', 'OPERANDO'), ('inativo', 'PARADA'), ('porta_aberta', 'PARADA'),
     ('em_execucao', 'OPERANDO'), ('pausa', 'PARADA'), ('parada', 'PARADA'),
     ('emergencia', 'EMERGENCIA'), ('motor_ligado', 'PARADA'), ('automatico', 'PARADA'),
     ('manual', 'PARADA'), ('alarme', 'ALARME'),
@@ -146,6 +147,97 @@ def test_new_snapshot_does_not_invent_or_merge_missing_states(event_api):
     assert send(client, machine, {'porta_aberta': False}).status_code == 201
     status = client.get(f"/api/cncs/{machine['id']}/status").json()
     assert status['states'] == {'porta_aberta': False}
+
+
+@pytest.mark.parametrize(('states', 'expected_status', 'expected_active', 'codes'), [
+    ({'ativo': True, 'inativo': False}, 'OPERANDO', True, []),
+    ({'ativo': False, 'inativo': True}, 'PARADA', False, []),
+    ({'ativo': False, 'em_execucao': True}, 'PARADA', False, []),
+    ({'ativo': True, 'inativo': True}, 'PARADA', False, ['ATIVIDADE_CONFLITANTE']),
+    ({'ativo': True, 'alarme': True}, 'ALARME', True, []),
+    ({'porta_aberta': True, 'emergencia': True}, 'EMERGENCIA', False, ['PORTA_ABERTA_EMERGENCIA']),
+    ({'porta_aberta': False, 'emergencia': True}, 'EMERGENCIA', False, []),
+    ({'emergencia': True}, 'EMERGENCIA', False, []),
+    ({'porta_aberta': True}, 'PARADA', False, []),
+    ({'motor_ligado': True}, 'PARADA', False, []),
+])
+def test_activity_and_combined_diagnostics_preserve_the_observed_snapshot(event_api, states, expected_status, expected_active, codes):
+    client, _, machine, _ = event_api
+    response = send(client, machine, states)
+    assert response.status_code == 201
+    assert response.json()['states'] == states
+    status = client.get(f"/api/cncs/{machine['id']}/status").json()
+    assert status['status'] == expected_status
+    assert status['states'] == states
+    assert [item['code'] for item in status['diagnostics']] == codes
+    assert client.get('/api/cncs/statuses').json()[0]['diagnostics'] == status['diagnostics']
+    reading = client.get(f"/api/cncs/{machine['id']}/history").json()['items'][0]
+    assert reading['machine_active'] is expected_active
+    assert reading['states'] == states
+
+
+def test_combined_diagnosis_clears_on_new_snapshot_but_is_marked_historical_offline(event_api):
+    client, _, machine, current = event_api
+    send(client, machine, {'ativo': False, 'inativo': True, 'emergencia': True,
+                           'motor_ligado': False, 'alarme': False, 'porta_aberta': True})
+    current[0] += timedelta(seconds=clock.OFFLINE_TIMEOUT_SECONDS + 1)
+    stale = client.get(f"/api/cncs/{machine['id']}/status").json()
+    assert stale['status'] == 'SEM_COMUNICACAO' and stale['online'] is False
+    assert stale['diagnostics'][0]['title'] == 'Operação falha'
+    send(client, machine, {'emergencia': True})
+    status = client.get(f"/api/cncs/{machine['id']}/status").json()
+    assert status['status'] == 'EMERGENCIA' and status['diagnostics'] == []
+    assert 'porta_aberta' not in status['states']
+
+
+def test_reserved_current_accepts_simulation_preserves_zero_and_never_carries_missing_values(event_api):
+    client, _, machine, _ = event_api
+    source = {'current_input': {'input': 'I8', 'physical_enabled': False, 'unit': 'A', 'source': 'simulated'}}
+    for amps in (12.5, 0):
+        response = send(client, machine, {'ativo': True}, analog_signals={'current': amps},
+                        extra_signals=source, event_id=f'current-{amps}')
+        assert response.status_code == 201
+        assert response.json()['analog_signals'] == {'current': amps}
+        status = client.get(f"/api/cncs/{machine['id']}/status").json()
+        assert status['analog_signals']['current'] == amps
+        assert status['extra_signals'] == source
+        retry = send(client, machine, {'ativo': True}, analog_signals={'current': amps},
+                     extra_signals=source, event_id=f'current-{amps}')
+        assert retry.json()['id'] == response.json()['id']
+    assert send(client, machine, {'ativo': True}, analog_signals={'current': 2},
+                extra_signals=source, event_id='current-0').status_code == 409
+    send(client, machine, {'ativo': True})
+    assert client.get(f"/api/cncs/{machine['id']}/status").json()['analog_signals'] == {}
+    history = client.get(f"/api/cncs/{machine['id']}/history").json()
+    assert history['total'] == 3
+    assert {item['analog_signals'].get('current') for item in history['items']} == {None, 0, 12.5}
+
+
+@pytest.mark.parametrize('value', [-1, True, None, 'NaN', '12.5'])
+def test_invalid_current_is_rejected_without_creating_readings(event_api, value):
+    client, db, machine, _ = event_api
+    assert send(client, machine, {'ativo': True}, analog_signals={'current': value}).status_code == 422
+    assert db.scalar(select(func.count()).select_from(MachineEvent)) == 0
+
+
+def test_signal_outputs_reach_current_and_historical_queries_and_clear_with_new_reading(event_api):
+    client, _, machine, current = event_api
+    first = send(client, machine, {'ativo': True, 'porta_aberta': True})
+    status = client.get(f"/api/cncs/{machine['id']}/status").json()
+    assert status['status'] == 'OPERANDO' and status['diagnostics'] == []
+    assert 'ATIVIDADE_COM_PORTA_ABERTA' in {item['code'] for item in status['signal_outputs']}
+    assert client.get('/api/cncs/statuses').json()[0]['signal_outputs'] == status['signal_outputs']
+    expected = status['signal_outputs']
+    current[0] += timedelta(seconds=clock.OFFLINE_TIMEOUT_SECONDS + 1)
+    offline = client.get(f"/api/cncs/{machine['id']}/status").json()
+    assert offline['status'] == 'SEM_COMUNICACAO' and offline['signal_outputs'] == expected
+    send(client, machine, {'ativo': True, 'porta_aberta': False})
+    recovered = client.get(f"/api/cncs/{machine['id']}/status").json()
+    assert 'ATIVIDADE_COM_PORTA_ABERTA' not in {item['code'] for item in recovered['signal_outputs']}
+    for endpoint in ('/api/cncs/history', f"/api/cncs/{machine['id']}/history"):
+        history = client.get(endpoint).json()['items']
+        original = next(item for item in history if item['id'] == first.json()['id'])
+        assert original['signal_outputs'] == expected
 
 
 def test_idempotency_is_machine_scoped_and_retries_do_not_keep_machine_online(event_api):

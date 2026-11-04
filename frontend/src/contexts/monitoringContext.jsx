@@ -237,7 +237,9 @@ export function MonitoringProvider({ children }) {
           );
           if (
             transitions.notices.some(
-              (notice) => notice.severity === MACHINE_STATUS.EMERGENCIA,
+              (notice) =>
+                !notice.resolved &&
+                notice.severity === MACHINE_STATUS.EMERGENCIA,
             )
           )
             playCriticalSound();

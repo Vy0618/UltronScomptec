@@ -203,6 +203,12 @@ export default function History() {
                     >
                       Ver máquina
                     </Link>
+                    <p className="mt-1 max-w-64 whitespace-normal text-xs text-text-muted">
+                      {event.signalOutputs
+                        ?.slice(0, 2)
+                        .map((output) => output.title)
+                        .join(" · ")}
+                    </p>
                   </td>
                 </tr>
               ))}

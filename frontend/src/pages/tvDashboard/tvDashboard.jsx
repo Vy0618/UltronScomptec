@@ -17,6 +17,7 @@ import { getStatusConfig } from "../../utils/status";
 import Logo from "../../components/logo/logo";
 import { Duration } from "../../components/liveTime/liveTime";
 import "./tv.css";
+import { SignalOutputSummary } from "../../components/signalOutputs/signalOutputList";
 
 function LiveClock() {
   const [now, setNow] = useState(new Date());
@@ -85,6 +86,7 @@ function TVMachineCard({ machine }) {
           {validDate ? <Duration since={machine.stateSince} /> : "—"}
         </strong>
       </div>
+      <SignalOutputSummary machine={machine} />
     </article>
   );
 }

@@ -33,7 +33,7 @@ MySQL é o banco padrão da instalação. A tabela `machine_events` pertence às
 
 ## Dashboard
 
-A aplicação apresenta os estados recebidos e diferencia ausência de informação, falta de novos eventos e observações antigas. Durante falhas da API, preserva as últimas informações conhecidas com indicação de desatualização. O resumo operacional reconhece execução, emergência e alarme; pausa e modos continuam como estados booleanos independentes.
+A aplicação apresenta os estados recebidos e diferencia ausência de informação, falta de novos eventos e observações antigas. Durante falhas da API, preserva as últimas informações conhecidas com indicação de desatualização. O perfil principal usa ativo, inativo, emergência, motor ligado, alarme e porta aberta. Emergência e alarme têm prioridade; inativo representa parada. Porta aberta junto de emergência produz **Operação falha**, enquanto ativo e inativo juntos indicam conflito. O firmware reserva I8 para corrente, sem leitura física; valores enviados com `--current` pelo simulador são identificados como simulados e ficam disponíveis na API, no histórico e no gráfico.
 
 ## Integração física opcional
 

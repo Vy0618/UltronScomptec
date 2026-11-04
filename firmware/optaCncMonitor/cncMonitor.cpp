@@ -3,18 +3,19 @@
 #include "telemetry.h"
 #include "config.h"
 #include "inputMonitor.h"
+#include "signalProfile.h"
 
 // This profile only reads inputs. It never configures or writes relay outputs.
 namespace {
 constexpr uint8_t INPUT_PINS[8] = {A0, A1, A2, A3, A4, A5, A6, A7};
 InputMonitor monitor;
-CncSnapshot latestSnapshot;  // Latest observed D000..D007, retained in RAM.
+CncSnapshot latestSnapshot;  // Six digital inputs; reserved I7/I8 are never read.
 uint32_t previousMs = 0;
 uint64_t uptimeMs = 0;
 
 uint8_t readInputs() {
   uint8_t raw = 0;
-  for (uint8_t i = 0; i < 8; ++i) {
+  for (uint8_t i = 0; i < ultron::DIGITAL_SIGNAL_COUNT; ++i) {
     if (digitalRead(INPUT_PINS[i]) == HIGH) raw |= 1U << i;
   }
   return raw;
@@ -39,7 +40,7 @@ void cncSetup() {
   const uint8_t raw = readInputs();
   previousMs = now;
   uptimeMs = now;
-  monitor.begin(raw, INPUT_ACTIVE_LOW_MASK, now);
+  monitor.begin(raw, INPUT_ACTIVE_LOW_MASK & ultron::DIGITAL_INPUT_MASK, now);
   // Initial snapshot is available even before the USB host opens the port.
   publish(raw, now);
   telemetryBegin();
