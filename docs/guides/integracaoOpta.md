@@ -16,20 +16,22 @@ Computador / Máquina
 
 ## Coleta
 
-| Entrada | Pino | Sinal |
-|---|---|---|
-| I1 | A0 | `ativo` |
-| I2 | A1 | `inativo` |
-| I3 | A2 | `emergencia` |
-| I4 | A3 | `motor_ligado` |
-| I5 | A4 | `alarme` |
-| I6 | A5 | `porta_aberta` |
-| I7 | A6 | Reserva livre |
-| I8 | A7 | Corrente em A; medição física desativada |
+A ligação sequencial esperada segue o mapa da IHM informado para esta instalação:
+
+| Saída IHM/CLP esperada | Indicação na IHM | Entrada Opta | Pino | Chave em `states` / finalidade |
+|---|---|---|---|---|
+| Q0.0 | Em execução | I1 | A0 | `ativo` |
+| Q0.1 | Parada | I2 | A1 | `inativo` |
+| Q0.2 | Emergência | I3 | A2 | `emergencia` |
+| Q0.3 | Motor ligado | I4 | A3 | `motor_ligado` |
+| Q0.4 | Porta aberta | I5 | A4 | `porta_aberta` |
+| Q0.5 | Alerta erro | I6 | A5 | `alarme` |
+| — | — | I7 | A6 | Reserva livre |
+| — | — | I8 | A7 | Corrente em A; medição física desativada |
 
 O firmware em [optaCncMonitor](../../firmware/optaCncMonitor) apenas lê entradas. Não configura nem escreve saídas de relé. O padrão é nível alto ativo, com inversão por máscara e filtro individual em `config.h`. Os sinais são independentes e preservados inclusive em combinações contraditórias.
 
-O perfil é `six_signals_current_reserved_v2`, definido em `signalProfile.h`. I7 e I8 ficam configuradas como entrada, sem leitura digital; não há leitura ADC ou corrente fabricada. O `Main.pdf` usa o mapeamento anterior de oito sinais e não inclui porta aberta. A correspondência entre CLP e entradas do novo firmware precisa ser ajustada antes do uso na bancada.
+O perfil é `six_signals_current_reserved_v3`, definido em `signalProfile.h`, com firmware USB/HTTP 2.1.1. I7 e I8 ficam configuradas como entrada, sem leitura digital; não há leitura ADC ou corrente fabricada. A tabela é o vínculo esperado, sem validação física já realizada: confira ligação elétrica e polaridade antes do ensaio na bancada. O `Main.pdf` usa o mapeamento anterior de oito sinais, sem porta aberta, e não confirma o vínculo atual.
 
 Corrente pode ser enviada por `POST /api/events` em `analog_signals.current`, em A, com a origem em `extra_signals.current_input`. O comando `tools/simuladorCnc.py --machine-id CNC-001 --state ativo --current 12.5` produz um evento simulado para publicar com `tools/publicarEventos.py`. Sem corrente, a chave é omitida e a interface mantém o valor como não informado; zero continua sendo uma leitura válida.
 

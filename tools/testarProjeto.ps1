@@ -1,5 +1,9 @@
 param(
-    [switch]$Firmware
+    [switch]$Firmware,
+    [switch]$FirmwareHostOnly,
+    [string]$ZigPath,
+    [string]$ArduinoJsonInclude,
+    [string]$CliPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,7 +75,7 @@ function Invoke-Check([string]$Name, [string]$Executable, [string[]]$Arguments, 
 $python = Join-Path $projectRoot '.venv\Scripts\python.exe'
 $node = Find-Node
 $npm = Find-Npm $node
-$envNames = @('DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'DEVICE_API_KEY', 'PYTHONDONTWRITEBYTECODE', 'VITE_USE_MOCKS', 'ULTRON_SIMULATION', 'INGEST_API_KEY', 'EVENT_OFFLINE_TIMEOUT_SECONDS')
+$envNames = @('DATABASE_URL', 'ADMIN_EMAIL', 'ADMIN_PASSWORD', 'DEVICE_API_KEY', 'PYTHONDONTWRITEBYTECODE', 'VITE_USE_MOCKS', 'VITE_API_BASE_URL', 'ULTRON_SIMULATION', 'INGEST_API_KEY', 'EVENT_OFFLINE_TIMEOUT_SECONDS', 'DEVICE_OFFLINE_TIMEOUT_SECONDS')
 $previousEnvironment = @{}
 foreach ($name in $envNames) { $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 
@@ -84,14 +88,21 @@ try {
     $env:DEVICE_API_KEY = ''
     $env:INGEST_API_KEY = ''
     $env:EVENT_OFFLINE_TIMEOUT_SECONDS = ''
+    $env:DEVICE_OFFLINE_TIMEOUT_SECONDS = '90'
     $env:PYTHONDONTWRITEBYTECODE = '1'
     $env:VITE_USE_MOCKS = 'false'
-    if ($Firmware) {
+    $env:VITE_API_BASE_URL = '/api'
+    if ($Firmware -or $FirmwareHostOnly) {
         # Host tests generate the C++ telemetry fixture consumed by the API suite.
         $firmwareScript = Join-Path $projectRoot 'firmware\testarFirmware.ps1'
         $shell = if (Test-Path -LiteralPath (Join-Path $PSHOME 'pwsh.exe')) { Join-Path $PSHOME 'pwsh.exe' } else { Join-Path $PSHOME 'powershell.exe' }
         if (Test-Path -LiteralPath $firmwareScript) {
-            Invoke-Check 'firmware' $shell @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $firmwareScript) $projectRoot ''
+            $firmwareArguments = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $firmwareScript)
+            if ($FirmwareHostOnly) { $firmwareArguments += '-HostOnly' }
+            if ($ZigPath) { $firmwareArguments += @('-ZigPath', $ZigPath) }
+            if ($ArduinoJsonInclude) { $firmwareArguments += @('-ArduinoJsonInclude', $ArduinoJsonInclude) }
+            if ($CliPath) { $firmwareArguments += @('-CliPath', $CliPath) }
+            Invoke-Check 'firmware' $shell $firmwareArguments $projectRoot ''
         } else {
             Invoke-Check 'firmware' $null @() $projectRoot 'firmware/testarFirmware.ps1 nao foi encontrado; os testes de firmware nao foram executados.'
         }
@@ -110,7 +121,8 @@ $failed = @($results | Where-Object { $_.codigo -ne 0 })
 $summary = [pscustomobject]@{
     execucao = $runId
     projeto = $projectRoot
-    firmwareSolicitado = [bool]$Firmware
+    firmwareSolicitado = [bool]($Firmware -or $FirmwareHostOnly)
+    firmwareSomenteHost = [bool]$FirmwareHostOnly
     aprovado = $failed.Count -eq 0
     verificacoes = @($results.ToArray())
 }

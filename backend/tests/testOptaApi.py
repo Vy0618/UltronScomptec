@@ -22,6 +22,7 @@ from services.clock import utcnow
 @pytest.fixture
 def api_client(monkeypatch):
     monkeypatch.delenv("DEVICE_API_KEY", raising=False)
+    monkeypatch.delenv("INGEST_API_KEY", raising=False)
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     with Session(engine) as db:
@@ -247,6 +248,29 @@ def test_invalid_payloads_and_unknown_device(api_client):
     for changes in [{"machine_active": "yes"}, {"digital_signals": {"alarm": "invalid"}}, {"analog_signals": {"current": "NaN"}}, {"timestamp": (utcnow() + timedelta(days=1)).isoformat() + "Z"}]:
         assert post(client, registration, **changes).status_code == 422
     assert client.post("/api/devices/unknown/telemetry", json={"machine_active": True, "voltage_24v": True}).status_code == 404
+
+
+@pytest.mark.parametrize("key", ["current", "corrente"])
+@pytest.mark.parametrize("value", [-1, True, False, "12.5"])
+def test_device_adapter_rejects_invalid_current_without_creating_events(api_client, key, value):
+    client, db = api_client
+    registration = register(client)
+    response = post(client, registration, analog_signals={key: value})
+    assert response.status_code == 422
+    assert db.scalars(select(MachineEvent)).all() == []
+
+
+@pytest.mark.parametrize("key", ["current", "corrente"])
+@pytest.mark.parametrize("amps", [0, 12.5])
+def test_device_adapter_preserves_current_and_other_signed_measurements(api_client, key, amps):
+    client, _ = api_client
+    registration = register(client)
+    analog = {key: amps, "temperature": -5.5}
+    response = post(client, registration, analog_signals=analog)
+    assert response.status_code == 201
+    assert response.json()["analog_signals"] == analog
+    history = client.get(f"/api/cncs/{registration['cnc']['id']}/history").json()
+    assert history["items"][0]["analog_signals"] == analog
 
 
 def test_optional_device_key(api_client, monkeypatch):

@@ -1,3 +1,4 @@
+import io
 import json
 import os
 from pathlib import Path
@@ -26,6 +27,7 @@ from database.models import Base, MachineEvent
 @pytest.fixture
 def api(monkeypatch):
     monkeypatch.delenv('DEVICE_API_KEY', raising=False)
+    monkeypatch.delenv('INGEST_API_KEY', raising=False)
     engine = create_engine('sqlite://', connect_args={'check_same_thread':False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     with Session(engine) as db:
@@ -47,7 +49,7 @@ def api(monkeypatch):
 def frame():
     payload = json.loads((ROOT/'firmware/optaCncMonitor/monitorSample.json').read_text())
     payload.pop('event_id',None); payload.pop('timestamp',None)
-    return {'protocol':1,'sequence':1,'uptime_ms':1000,'firmware_version':'opta-monitor-usb-2.0.0','payload':payload}
+    return {'protocol':1,'sequence':1,'uptime_ms':1000,'firmware_version':'opta-monitor-usb-2.1.1','payload':payload}
 
 
 def test_chunks_registration_database_and_frontend(api):
@@ -88,6 +90,39 @@ def test_generic_usb_event_preserves_current_and_simulation_metadata(api):
     assert gateway.send(reading, event)['analog_signals'] == {'current': 12.5}
     status = client.get(f"/api/cncs/{machine['id']}/status").json()
     assert status['extra_signals']['current_input']['source'] == 'simulated'
+    for key, value in reading.payload['extra_signals'].items():
+        assert event['extra_signals'][key] == value
+        assert status['extra_signals'][key] == value
+    assert event['extra_signals']['boot_id'] == gateway.session
+
+
+@pytest.mark.parametrize('amps', [0, 24.0, 18.2])
+def test_fixed_virtual_current_reaches_status_and_history_without_changing_ihm_states(api, amps):
+    fixture = ROOT / '.build/firmware/ihm-usb-fixtures.txt'
+    if not fixture.exists():
+        pytest.skip('Gere ihm-usb-fixtures.txt com o teste C++ de telemetria')
+    adapter, client, _ = api
+    machine = client.post('/api/cncs', json={'name': 'IHM com corrente virtual'}).json()
+    gateway = Gateway(adapter, machine_id=machine['id'], simulated_current=amps)
+    expected_statuses = ('OPERANDO', 'PARADA', 'EMERGENCIA', 'PARADA',
+                         'PARADA', 'ALARME', 'EMERGENCIA', 'EMERGENCIA')
+    wires = fixture.read_text().splitlines()
+    assert len(wires) == len(expected_statuses)
+    for wire, expected_status in zip(wires, expected_statuses):
+        parsed = Frames().feed(wire)
+        reading = reading_from(parsed)
+        body = gateway.payload_for(reading)
+        saved = gateway.send(reading, body)
+        assert saved['states'] == parsed['payload']['digital_signals']
+        status = client.get(f"/api/cncs/{machine['id']}/status").json()
+        assert status['status'] == expected_status
+        assert status['analog_signals'] == {'current': amps}
+        assert status['extra_signals']['current_input']['source'] == 'simulated'
+        assert parsed['payload']['analog_signals'] == {}
+    history = client.get(f"/api/cncs/{machine['id']}/history").json()
+    assert history['total'] == len(wires)
+    assert all(item['analog_signals'] == {'current': amps} for item in history['items'])
+    assert all(item['extra_signals']['current_input']['source'] == 'simulated' for item in history['items'])
 
 
 def test_existing_uuid_preserves_binding(api):
@@ -129,6 +164,54 @@ def test_resync_and_malformed_frames():
     with pytest.raises(ValueError):reading_from({'protocol':2,'payload':{}})
     with pytest.raises(ValueError):reading_from({**frame(),'sequence':True})
     with pytest.raises(ValueError):frames.feed('CNC_JSON:{"value":NaN}')
+
+
+@pytest.mark.parametrize('protocol', [True, 1.0, '1', None])
+def test_usb_protocol_requires_an_integer_version(protocol):
+    with pytest.raises(ValueError, match='protocolo USB incompatível'):
+        reading_from({**frame(), 'protocol': protocol})
+
+
+@pytest.mark.parametrize('number', ['NaN', 'Infinity', '-Infinity', '1e999', '-1e999'])
+def test_usb_frames_reject_non_finite_numbers_including_exponent_overflow(number):
+    with pytest.raises(ValueError, match='número não finito'):
+        Frames().feed('CNC_JSON:{"analog_signals":{"current":' + number + '}}')
+
+
+@pytest.mark.parametrize('response', [None, [], True, 'not an object'])
+def test_http_adapter_rejects_non_object_success_responses(response, monkeypatch):
+    monkeypatch.setattr('urllib.request.urlopen', lambda *args, **kwargs:
+                        io.BytesIO(json.dumps(response).encode()))
+    with pytest.raises(ValueError, match='resposta da API deve ser objeto JSON'):
+        HttpApi('http://127.0.0.1:8000/api').post('/events', {})
+
+
+@pytest.mark.parametrize('invalid', [None, [], {'device': None}, {'device': {}}, {'device': {'id': None}}])
+def test_sender_recovers_from_malformed_registration_response(invalid):
+    import queue
+    stop = threading.Event()
+    pending = queue.Queue()
+    reading = reading_from(frame())
+    pending.put(reading)
+    calls = []
+    device_id = '11111111-1111-4111-8111-111111111111'
+    class RecoveringApi:
+        def post(self, path, body):
+            calls.append(path)
+            if len(calls) == 1:
+                return invalid
+            if path == '/devices/register':
+                return {'device': {'id': device_id}}
+            stop.set()
+            return {'id': 'saved'}
+    class ImmediateStop:
+        def is_set(self):
+            return stop.is_set()
+        def wait(self, seconds):
+            return stop.is_set()
+    gateway = Gateway(RecoveringApi(), mac='AA:BB:CC:DD:EE:51')
+    sender(gateway, pending, ImmediateStop())
+    assert calls == ['/devices/register', '/devices/register', f'/devices/{device_id}/telemetry']
 
 
 def test_transient_retry_keeps_exact_payload():
@@ -231,7 +314,7 @@ def test_boolean_monitor_real_firmware_frame_reaches_api(api):
     assert saved['digital_signals'] == dict.fromkeys((
         'ativo', 'inativo', 'emergencia', 'motor_ligado', 'alarme', 'porta_aberta'), True)
     assert saved['machine_active'] is False
-    assert saved['extra_signals']['profile'] == 'six_signals_current_reserved_v2'
+    assert saved['extra_signals']['profile'] == 'six_signals_current_reserved_v3'
     assert saved['extra_signals']['entradas_brutas'] == dict.fromkeys(
         (f'I{i}' for i in range(1, 7)), True)
     assert saved['voltage_24v'] is None and saved['analog_signals'] == {}
@@ -257,3 +340,71 @@ def test_default_firmware_id_reaches_machine_dashboard_without_collector_registr
     assert client.get('/api/devices').json() == []
     status = client.get(f"/api/cncs/{machine['id']}/status").json()
     assert status['states'] == saved['states'] and status['online'] is True
+
+
+def test_real_ihm_pin_frames_preserve_distinct_door_and_alarm_through_machine_api(api):
+    """Actual C++ USB bytes -> bridge -> SQLite -> current and historical API."""
+    fixture = ROOT / '.build/firmware/ihm-usb-fixtures.txt'
+    if not fixture.exists():
+        pytest.skip('Gere ihm-usb-fixtures.txt com o teste C++ de telemetria')
+    wires = fixture.read_text().splitlines()
+    # Independent expectations from Q0.0..Q0.5 -> I1..I6, not the firmware table.
+    cases = [
+        (0x01, {'ativo'}, 'OPERANDO', set(), {'ATIVIDADE_INFORMADA'}),
+        (0x02, {'inativo'}, 'PARADA', set(), {'INATIVIDADE_INFORMADA'}),
+        (0x04, {'emergencia'}, 'EMERGENCIA', set(), {'EMERGENCIA_ACIONADA'}),
+        (0x08, {'motor_ligado'}, 'PARADA', set(), {'MOTOR_SEM_ATIVIDADE_CONFIRMADA'}),
+        (0x10, {'porta_aberta'}, 'PARADA', set(), {'PORTA_ABERTA'}),
+        (0x20, {'alarme'}, 'ALARME', set(), {'ALARME_ACIONADO'}),
+        (0x14, {'emergencia', 'porta_aberta'}, 'EMERGENCIA',
+         {'PORTA_ABERTA_EMERGENCIA'}, {'PORTA_ABERTA_EMERGENCIA'}),
+        (0x24, {'emergencia', 'alarme'}, 'EMERGENCIA', set(), {'EMERGENCIA_COM_ALARME'}),
+    ]
+    assert len(wires) == len(cases)
+    signals = ('ativo', 'inativo', 'emergencia', 'motor_ligado', 'porta_aberta', 'alarme')
+    adapter, client, db = api
+    machine = client.post('/api/cncs', json={'name': 'IHM Q0.0–Q0.5'}).json()
+    gateway = Gateway(adapter)
+    saved_readings = {}
+    for sequence, (wire, case) in enumerate(zip(wires, cases), 1):
+        mask, enabled, expected_status, expected_diagnostics, expected_outputs = case
+        states = {signal: signal in enabled for signal in signals}
+        parsed = Frames().feed(wire)
+        assert parsed['sequence'] == sequence
+        assert parsed['machine_id'] == '1'
+        assert parsed['firmware_version'] == 'opta-monitor-usb-2.1.1'
+        assert parsed['payload']['extra_signals']['profile'] == 'six_signals_current_reserved_v3'
+        assert parsed['payload']['extra_signals']['entradas_brutas'] == {
+            f'I{index + 1}': bool(mask & (1 << index)) for index in range(6)
+        }
+        assert parsed['payload']['digital_signals'] == states, f'IHM input mask {mask:#04x}'
+        reading = reading_from(parsed)
+        payload = gateway.payload_for(reading)
+        assert payload['states'] == states
+        saved = gateway.send(reading, payload)
+        assert saved['machine_id'] == machine['id']
+        assert saved['states'] == states
+        status = client.get(f"/api/cncs/{machine['id']}/status").json()
+        assert status['online'] is True
+        assert status['states'] == states
+        assert status['status'] == expected_status
+        assert {item['code'] for item in status['diagnostics']} == expected_diagnostics
+        assert {item['code'] for item in status['signal_outputs']} == expected_outputs
+        fleet = client.get('/api/cncs/statuses').json()[0]
+        for field in ('states', 'status', 'diagnostics', 'signal_outputs'):
+            assert fleet[field] == status[field]
+        saved_readings[saved['id']] = {
+            'states': states,
+            'machine_active': mask == 0x01,
+            'signal_outputs': status['signal_outputs'],
+        }
+    assert client.get('/api/devices').json() == []
+    assert len(db.scalars(select(MachineEvent)).all()) == len(cases)
+    for endpoint in (f"/api/cncs/{machine['id']}/history", '/api/cncs/history'):
+        history = client.get(endpoint).json()
+        assert history['total'] == len(cases)
+        assert [item['id'] for item in history['items']] == list(reversed(saved_readings))
+        for item in history['items']:
+            assert item['machine_id'] == machine['id']
+            for field, expected in saved_readings[item['id']].items():
+                assert item[field] == expected

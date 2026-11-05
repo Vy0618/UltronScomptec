@@ -38,7 +38,7 @@
     "fluxo_fisico_opcional": [
       "Computador / Máquina",
       "IHM / CLP simula a CNC e disponibiliza os sinais",
-      "Arduino Opta coleta I1–I8",
+      "Arduino Opta coleta I1–I6; I7 livre e I8 reservada para corrente, sem leitura física",
       "Serial USB",
       "Servidor com API, MySQL e dashboard"
     ]
@@ -302,9 +302,9 @@
       "origem": "firmware/optaCncMonitor/config.h",
       "aplicacao": "Versões derivadas do transporte escolhido; alterar junto da versão do firmware.",
       "valores": {
-        "FIRMWARE_VERSION_USB": "opta-monitor-usb-2.0.0",
-        "FIRMWARE_VERSION_HTTP": "opta-monitor-wifi-2.0.0",
-        "profile": "boolean_monitor_v1"
+        "FIRMWARE_VERSION_USB": "opta-monitor-usb-2.1.1",
+        "FIRMWARE_VERSION_HTTP": "opta-monitor-wifi-2.1.1",
+        "profile": "six_signals_current_reserved_v3"
       }
     },
     "aquisicao_e_transporte": {
@@ -325,50 +325,57 @@
     },
     "entradas": {
       "origem": [
+        "firmware/optaCncMonitor/signalProfile.h",
         "firmware/optaCncMonitor/cncMonitor.cpp",
         "firmware/optaCncMonitor/telemetryPayload.h"
       ],
-      "aplicacao": "Mapeamento fixo do perfil atual; alteração exige revisar aquisição, serialização e contrato e recompilar.",
+      "aplicacao": "Ligação sequencial esperada segundo o mapa informado da IHM: Q0.0–Q0.5 para I1–I6. Conferir ligação elétrica e polaridade na bancada; não indica hardware validado. Alteração do perfil exige revisar aquisição e serialização e recompilar.",
       "valores": {
         "I1": {
           "pino": "A0",
-          "sinal": "em_execucao",
-          "sinal_clp": "D000"
+          "sinal": "ativo",
+          "sinal_clp": "Q0.0"
         },
         "I2": {
           "pino": "A1",
-          "sinal": "pausa",
-          "sinal_clp": "D001"
+          "sinal": "inativo",
+          "sinal_clp": "Q0.1"
         },
         "I3": {
           "pino": "A2",
-          "sinal": "parada",
-          "sinal_clp": "D002"
+          "sinal": "emergencia",
+          "sinal_clp": "Q0.2"
         },
         "I4": {
           "pino": "A3",
-          "sinal": "emergencia",
-          "sinal_clp": "D003"
+          "sinal": "motor_ligado",
+          "sinal_clp": "Q0.3"
         },
         "I5": {
           "pino": "A4",
-          "sinal": "motor_ligado",
-          "sinal_clp": "D004"
+          "sinal": "porta_aberta",
+          "sinal_clp": "Q0.4"
         },
         "I6": {
           "pino": "A5",
-          "sinal": "automatico",
-          "sinal_clp": "D005"
+          "sinal": "alarme",
+          "sinal_clp": "Q0.5"
         },
         "I7": {
           "pino": "A6",
-          "sinal": "manual",
-          "sinal_clp": "D006"
+          "sinal": null,
+          "sinal_clp": null,
+          "finalidade": "Reserva livre",
+          "leitura_digital_habilitada": false
         },
         "I8": {
           "pino": "A7",
-          "sinal": "alarme",
-          "sinal_clp": "D007"
+          "sinal": "current",
+          "sinal_clp": null,
+          "finalidade": "Corrente reservada, em analog_signals.current",
+          "unidade": "A",
+          "leitura_digital_habilitada": false,
+          "leitura_fisica_habilitada": false
         }
       }
     }
@@ -473,12 +480,12 @@
       "aplicacao": "Produtor JSON Lines em stdout; não acessa API nem hardware. Compor com publicarEventos.py ou redirecionar para arquivo.",
       "valores": {
         "--machine-id": null,
-        "--state": "em_execucao",
+        "--state": "ativo",
         "--count": 1,
         "--interval": 1
       },
       "observacoes": [
-        "--machine-id é obrigatório; --count=-1 produz continuamente; --state=cycle alterna os oito estados."
+        "--machine-id é obrigatório; --count=-1 produz continuamente; --state=cycle alterna os seis sinais ativo, inativo, emergencia, motor_ligado, porta_aberta e alarme."
       ]
     },
     "testar_opta_windows": {

@@ -15,9 +15,13 @@ test("six monitoring signals remain independent and unknown signals are retained
       "inativo",
       "emergencia",
       "motor_ligado",
-      "alarme",
       "porta_aberta",
+      "alarme",
     ],
+  );
+  assert.deepEqual(
+    CNC_SIGNALS.map((item) => item.label),
+    ["Em execução", "Parada", "Emergência", "Motor ligado", "Porta aberta", "Alerta / erro"],
   );
   const states = { ativo: true, sensor_extra: false };
   assert.equal(observedStates(states).at(-1).key, "sensor_extra");

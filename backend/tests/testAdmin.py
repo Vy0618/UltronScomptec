@@ -115,6 +115,33 @@ def test_public_registration_cannot_grant_admin(admin_api):
     assert client.get("/api/admin/state", headers=headers).status_code == 403
 
 
+@pytest.mark.parametrize("name", ["  ", " a ", "\t\n"])
+def test_public_registration_rejects_names_too_short_after_trimming(admin_api, name):
+    client, _, engine, _ = admin_api
+    response = client.post("/api/auth/register", json={
+        "name": name, "email": "visitor@example.com", "password": "test-password",
+    })
+    assert response.status_code == 422
+    with Session(engine) as db:
+        assert db.scalar(select(User).where(User.email == "visitor@example.com")) is None
+
+
+def test_registration_trims_name_without_changing_password_spaces(admin_api):
+    client, _, _, _ = admin_api
+    password = "  test-password  "
+    response = client.post("/api/auth/register", json={
+        "name": "  Pessoa de teste  ", "email": "visitor@example.com", "password": password,
+    })
+    assert response.status_code == 201
+    assert response.json()["user"]["name"] == "Pessoa de teste"
+    assert client.post("/api/auth/login", json={
+        "email": "visitor@example.com", "password": password,
+    }).status_code == 200
+    assert client.post("/api/auth/login", json={
+        "email": "visitor@example.com", "password": password.strip(),
+    }).status_code == 401
+
+
 def test_env_admin_sync_and_password_change(admin_api, monkeypatch):
     from services.adminBootstrap import sync_admin
     client, _, engine, _ = admin_api

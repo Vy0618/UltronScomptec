@@ -1,14 +1,22 @@
 param(
     [switch]$HostOnly,
     [string]$CliPath,
-    [string]$ZigPath
+    [string]$ZigPath,
+    [string]$ArduinoJsonInclude
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $outputDir = Join-Path $root '.build\firmware'
-$jsonInclude = Join-Path $root '.tools\arduino-user\libraries\ArduinoJson\src'
-if (-not $ZigPath) { $ZigPath = Join-Path $root '.tools\zig\zig-windows-x86_64-0.13.0\zig.exe' }
+$jsonInclude = if ($ArduinoJsonInclude) { [System.IO.Path]::GetFullPath($ArduinoJsonInclude) } else {
+    Join-Path $root '.tools\arduino-user\libraries\ArduinoJson\src'
+}
+if (-not $ZigPath) {
+    $zigCommand = Get-Command zig.exe -ErrorAction SilentlyContinue
+    $ZigPath = if ($zigCommand) { $zigCommand.Source } else {
+        Join-Path $root '.tools\zig\zig-windows-x86_64-0.13.0\zig.exe'
+    }
+}
 if (-not $CliPath) {
     $cliCommand = Get-Command arduino-cli -ErrorAction SilentlyContinue
     if ($cliCommand) { $CliPath = $cliCommand.Source }
@@ -17,8 +25,17 @@ if (-not $CliPath) {
 
 function Run-Checked {
     param([string]$Executable, [string[]]$Arguments, [string]$Log)
-    & $Executable @Arguments 2>&1 | Tee-Object -FilePath $Log
-    if ($LASTEXITCODE -ne 0) { throw "Falha ($LASTEXITCODE): $Executable. Consulte $Log" }
+    # Windows PowerShell may turn native stderr into ErrorRecords even on success.
+    # Compiler warnings belong in the log; only the process exit code fails a check.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $Executable @Arguments 2>&1 | Tee-Object -FilePath $Log
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    if ($exitCode -ne 0) { throw "Falha ($exitCode): $Executable. Consulte $Log" }
 }
 
 $oldGlobalCache = $env:ZIG_GLOBAL_CACHE_DIR
@@ -26,19 +43,19 @@ $oldLocalCache = $env:ZIG_LOCAL_CACHE_DIR
 $mappedDrive = $null
 Push-Location -LiteralPath $root
 try {
-    if (-not (Test-Path -LiteralPath $ZigPath)) { throw 'Zig 0.13.0 ausente. Consulte README.md, secao 10 (Firmware do Opta WiFi); este script nao instala dependencias.' }
-    if (-not (Test-Path -LiteralPath (Join-Path $jsonInclude 'ArduinoJson.h'))) { throw 'ArduinoJson 7.4.2 ausente em .tools/arduino-user/libraries. Consulte README.md, secao 10 (Firmware do Opta WiFi).' }
+    if (-not (Test-Path -LiteralPath $ZigPath)) { throw 'Zig 0.13.0 ausente. Informe -ZigPath ou instale em .tools/zig/zig-windows-x86_64-0.13.0. Consulte a secao Testes do README.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $jsonInclude 'ArduinoJson.h'))) { throw 'ArduinoJson 7.4.2 ausente. Informe -ArduinoJsonInclude com a pasta src da biblioteca ou instale em .tools/arduino-user/libraries/ArduinoJson. Consulte a secao Testes do README.' }
     New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
     $env:ZIG_GLOBAL_CACHE_DIR = Join-Path $root '.build\zig-global'
     $env:ZIG_LOCAL_CACHE_DIR = Join-Path $root '.build\zig-local'
     Run-Checked $ZigPath @('c++','-std=c++17','-Wall','-Wextra','-Werror','-Ifirmware/tests/host','firmware/tests/host/testControl.cpp','-o',"$outputDir\test_control.exe") "$outputDir\compile-control.log"
     Run-Checked "$outputDir\test_control.exe" @() "$outputDir\test-control.log"
-    Run-Checked $ZigPath @('c++','-std=c++17','-Wall','-Wextra','-Werror',"-I$jsonInclude",'firmware/tests/host/testtelemetry.cpp','-o',"$outputDir\test_telemetry.exe") "$outputDir\compile-telemetry.log"
-    Run-Checked "$outputDir\test_telemetry.exe" @("$outputDir\telemetry-fixtures.json", "$outputDir\usb-fixture.txt", "$outputDir\monitor-usb-fixture.txt") "$outputDir\test-telemetry.log"
+    Run-Checked $ZigPath @('c++','-std=c++17','-Wall','-Wextra','-Werror',"-I$jsonInclude",'firmware/tests/host/testTelemetry.cpp','-o',"$outputDir\test_telemetry.exe") "$outputDir\compile-telemetry.log"
+    Run-Checked "$outputDir\test_telemetry.exe" @("$outputDir\telemetry-fixtures.json", "$outputDir\usb-fixture.txt", "$outputDir\monitor-usb-fixture.txt", "$outputDir\ihm-usb-fixtures.txt") "$outputDir\test-telemetry.log"
 
     if (-not $HostOnly) {
         if (-not (Test-Path -LiteralPath $CliPath)) { throw 'Arduino CLI ausente. Instale Arduino IDE 2/CLI ou informe -CliPath.' }
-        if (-not (Test-Path -LiteralPath '.tools\arduino-data\packages\arduino\hardware\mbed_opta\4.6.0')) { throw 'Core arduino:mbed_opta@4.6.0 ausente. Consulte README.md, secao 10 (Firmware do Opta WiFi).' }
+        if (-not (Test-Path -LiteralPath '.tools\arduino-data\packages\arduino\hardware\mbed_opta\4.6.0')) { throw 'Core arduino:mbed_opta@4.6.0 ausente em .tools/arduino-data. Use -HostOnly para validar a logica sem compilar para a placa.' }
         # GCC 7 uses unnormalized relative include paths and exceeds MAX_PATH in
         # long OneDrive workspaces. A temporary drive keeps the installed core intact.
         foreach ($letter in @('U','V','W','X','Y','Z')) {

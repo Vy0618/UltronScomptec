@@ -5,13 +5,14 @@ export function useMachines() {
   return { machines, loading, error: connectionError, reload: () => {} };
 }
 export function useMachine(id) {
-  const { allMachines, loading } = useMonitoring();
+  const { allMachines, loading, connectionError } = useMonitoring();
   return {
     machine:
       allMachines.find(
         (machine) => machine.id === id || machine.backendId === id,
       ) || null,
     loading,
+    error: connectionError,
   };
 }
 export function useDashboardSummary() {

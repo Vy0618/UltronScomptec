@@ -96,18 +96,18 @@ Uma alteração de sinais atualiza o painel mesmo sem mudança de status. As not
 
 ### Mapeamento físico atual do Opta
 
-O firmware adota I1–I6 na ordem dos seis sinais solicitados, mantém I7 livre e reserva I8 para corrente. O `Main.pdf` representa o mapeamento anterior, com oito redes `%M0.0`–`%M0.7` → `%Q0.0`–`%Q0.7`, sem porta aberta: ele não comprova o novo vínculo entre os sinais do CLP e as entradas abaixo. Ajuste a origem dos sinais conforme este perfil antes de usar o firmware atualizado na bancada.
+O perfil `six_signals_current_reserved_v3` (firmware USB/HTTP 2.1.1) segue o mapa da IHM informado para esta instalação. A tabela descreve a ligação sequencial esperada de Q0.0–Q0.5 a I1–I6; a ligação elétrica e a polaridade ainda precisam ser conferidas na bancada. O `Main.pdf` representa o mapeamento anterior, com oito redes `%M0.0`–`%M0.7` → `%Q0.0`–`%Q0.7`, sem porta aberta, e não comprova essa ligação atual.
 
-| Opta | Pino | Sinal / finalidade |
-|---|---|---|
-| I1 | A0 | `ativo` |
-| I2 | A1 | `inativo` |
-| I3 | A2 | `emergencia` |
-| I4 | A3 | `motor_ligado` |
-| I5 | A4 | `alarme` |
-| I6 | A5 | `porta_aberta` |
-| I7 | A6 | Reserva livre |
-| I8 | A7 | Corrente em A, medição física desativada |
+| Saída IHM/CLP esperada | Indicação na IHM | Opta | Pino | Chave em `states` / finalidade |
+|---|---|---|---|---|
+| Q0.0 | Em execução | I1 | A0 | `ativo` |
+| Q0.1 | Parada | I2 | A1 | `inativo` |
+| Q0.2 | Emergência | I3 | A2 | `emergencia` |
+| Q0.3 | Motor ligado | I4 | A3 | `motor_ligado` |
+| Q0.4 | Porta aberta | I5 | A4 | `porta_aberta` |
+| Q0.5 | Alerta erro | I6 | A5 | `alarme` |
+| — | — | I7 | A6 | Reserva livre |
+| — | — | I8 | A7 | Corrente em A, medição física desativada |
 
 O firmware apenas monitora entradas. Polaridade e filtros ficam em [config.h](firmware/optaCncMonitor/config.h). As filas são limitadas e ficam em RAM; interrupções podem perder transições. O perfil atual observa booleanos e não implementa protocolos proprietários Mitsubishi ou controle de atuadores. Nomes legados de execução (`em_execucao`/`ciclo`/`cycle`) continuam aceitos pela aplicação; o histórico e outros sinais recebidos são preservados.
 
@@ -130,6 +130,18 @@ No PowerShell:
 ```
 
 Troque `12.5` pelo valor desejado, inclusive `0`. O comando marca a origem como `simulated`; cartões, detalhes e gráfico identificam a simulação. Uma leitura posterior sem corrente volta a indicar valor não informado, sem carregar o número anterior. A reserva de I8 não configura saídas de relé e não habilita uma medição física sem sensor.
+
+Para usar os **sinais reais da IHM/Opta** com uma corrente virtual fixa, acrescente a simulação na própria ponte USB:
+
+```powershell
+& .\.venv\Scripts\python.exe tools/ponteUsb.py --listar-portas
+# Use a porta do Opta e o código da CNC cadastrada:
+& .\.venv\Scripts\python.exe tools/ponteUsb.py --porta COM4 --machine-id CNC-001 --simular-corrente
+```
+
+`--simular-corrente` usa **24 A** como valor padrão. Para escolher outro valor, inclusive zero, use `--corrente 18.2` ou `--corrente 0` no lugar dessa opção. O valor é fixo: a troca é feita pelo argumento, sem mudança automática pelos sinais. Interrompa a ponte com `Ctrl+C` antes de iniciá-la com outro valor. Sem ambas as opções, a ponte mantém o comportamento normal de corrente ausente ou recebida.
+
+Essa opção acrescenta apenas `analog_signals.current` à mesma leitura recebida, marcada como `simulated` e `physical_enabled=false`. Os seis sinais, seu mapeamento e suas regras permanecem os recebidos do Opta; não é necessário regravar a placa para mudar o valor virtual. Uma corrente já recebida, inclusive zero e o alias `corrente`, ou um sensor declarado fisicamente habilitado têm prioridade e não são substituídos. Use somente essa ponte para a CNC em teste; um simulador separado enviaria outro snapshot sobre os sinais reais.
 
 ## Setup
 
@@ -311,6 +323,19 @@ Escolha um exemplo da tabela. No PowerShell, substitua `enviar_sinais` por `Envi
 
 O simulador só gera JSON Lines; o publicador envia cada linha à API. `--also` é repetível. `--count -1` mantém a emissão até `Ctrl+C`; `--count 6` limita a seis eventos. `--key=` é próprio deste teste sem chave e evita herdar credenciais de ingestão do ambiente.
 
+Para testar uma frota no Windows, com a API já iniciada, use:
+
+```powershell
+# Cadastra ou reutiliza CNC teste 01 até CNC teste 06:
+.\tools\testarSeisMaquinas.ps1 -Rodadas 0
+# Acrescenta 30 leituras por máquina, 180 no total, em aproximadamente um minuto:
+.\tools\testarSeisMaquinas.ps1 -Rodadas 30 -IntervaloSegundos 2
+```
+
+O comando reutiliza os cadastros de teste pelo nome, usa seus UUIDs reais e acrescenta histórico sem apagar registros. Os seis cenários se alternam entre as máquinas: execução com motor, parada, emergência, alarme, execução com porta aberta e emergência com porta aberta. Cada evento contém os seis booleanos e metadados de simulação; a corrente permanece ausente. O horário é atribuído pela API no recebimento. O resumo final mostra o total persistido de cada máquina, incluindo execuções anteriores. No histórico da dashboard, clique em **Atualizar histórico** para incluir leituras geradas depois que a página foi aberta.
+
+`-Api` permite alterar o endereço da API. Se a ingestão exigir chave, informe `-Chave` ou configure `INGEST_API_KEY`/`DEVICE_API_KEY` no ambiente do terminal. Cadastro e histórico mantêm o fluxo de autenticação existente.
+
 Para enviar um snapshot com todos os seis sinais explicitamente desacionados, pare o produtor e use:
 
 ```bash
@@ -346,13 +371,25 @@ Invoke-RestMethod "$api/cncs/history?page=1&limit=10" | ConvertTo-Json -Depth 10
 
 Para testar a perda de comunicação, interrompa somente o produtor e aguarde 10 s mais a próxima consulta da dashboard. O estado passa a `SEM_COMUNICACAO`, e as interpretações ficam marcadas como antigas. Reinicie o produtor para recuperar a comunicação. Para testar indisponibilidade da API, mantenha a página aberta, encerre a API e depois inicie-a novamente com o mesmo comando de simulação.
 
+### Histórico reconstruído de quatro horas
+
+O banco MySQL fica fora do repositório Git. Para transportar o histórico reconstruído de **Siemens S7-300** e **Siemens S7-1200**, o projeto inclui `data/demo/historicoQuatroHoras.json`: uma janela de 04/11/2026, das 18:08:31 às 22:08:31 de Brasília, com 1.021 registros. Esse arquivo contém somente o plano desse histórico, sem usuários ou credenciais, e pode acompanhar o código no Git.
+
+Com o MySQL e a API já em execução, importe em outro computador pela raiz do projeto:
+
+```powershell
+& .\.venv\Scripts\python.exe tools/reconstruirHistorico.py --plano .\data\demo\historicoQuatroHoras.json --aplicar
+```
+
+A ferramenta cria os dois cadastros que estiverem faltando, reutiliza nomes existentes e preserva os demais registros. Reexecutar o mesmo plano não duplica seus eventos. A origem do lote permanece `reconstructed`. O arquivo cobre apenas esse conjunto de quatro horas; um backup completo do MySQL requer uma exportação separada.
+
 ## 2) Setup para teste integrado com o CLP
 
 Use este caminho para testar IHM/CLP → Opta → USB → ponte Python → API → MySQL → dashboard. Faça a [preparação comum](#setup), instale MySQL 8 e deixe `arduino-cli` no PATH.
 
 ### Preparar os sinais do CLP
 
-O firmware espera I1=ativo, I2=inativo, I3=emergência, I4=motor ligado, I5=alarme/erro e I6=porta aberta. I7 fica livre; I8/A7 permanece reservada para corrente, sem leitura física. A origem dos sinais do CLP deve corresponder ao [mapeamento do firmware](#mapeamento-físico-atual-do-opta). O `Main.pdf` descreve o ladder anterior e não inclui porta aberta: não o use como confirmação do novo vínculo.
+O firmware espera a ligação sequencial Q0.0→I1=ativo (Em execução), Q0.1→I2=inativo (Parada), Q0.2→I3=emergência, Q0.3→I4=motor ligado, Q0.4→I5=porta aberta e Q0.5→I6=alarme (Alerta erro). I7 fica livre; I8/A7 permanece reservada para corrente, sem leitura física. Confira a ligação e a polaridade contra o [mapeamento do firmware](#mapeamento-físico-atual-do-opta) antes do ensaio. O `Main.pdf` descreve o ladder anterior e não confirma o vínculo atual.
 
 Cadastre a CNC antes de iniciar a ponte. Mantenha somente um produtor de snapshots por máquina: pare o simulador ao testar os sinais do CLP. Encerre a API SQLite de teste antes de iniciar a API MySQL na mesma porta. No PowerShell, pare o launcher com `-Acao parar` antes de reiniciá-lo sem `-Simular`.
 
@@ -559,7 +596,15 @@ npm --prefix frontend run lint
 npm --prefix frontend run build
 ```
 
-No Windows, use `tools/testarProjeto.ps1`; `-Firmware` inclui verificações do firmware. Os testes Python usam SQLite isolado. Concorrência MySQL exige `ULTRON_TEST_MYSQL_URL` apontando para um banco local separado com nome iniciado em `ultron_test`. Testes de software não validam a ligação elétrica ou o hardware físico.
+No Windows, use `tools/testarProjeto.ps1`; `-Firmware` inclui os testes C++ e a compilação para a placa. `-FirmwareHostOnly` executa os testes C++ sem exigir o core da placa ou gravar o Opta. Ambos aceitam `-ZigPath` e `-ArduinoJsonInclude` para ferramentas já instaladas; a segunda opção aponta para a pasta `src` do ArduinoJson 7.4.2. O compilador de host esperado é Zig 0.13.0. `-CliPath` permite indicar o Arduino CLI para a compilação de placa.
+
+```powershell
+.\tools\testarProjeto.ps1
+# Com as ferramentas de host instaladas:
+.\tools\testarProjeto.ps1 -FirmwareHostOnly -ZigPath 'C:\ferramentas\zig\zig.exe' -ArduinoJsonInclude 'C:\ferramentas\ArduinoJson\src'
+```
+
+Os testes Python usam SQLite isolado. Concorrência MySQL exige `ULTRON_TEST_MYSQL_URL` apontando para um banco local separado com nome iniciado em `ultron_test`. Testes de software não validam a ligação elétrica ou o hardware físico.
 
 O [teste de navegador e responsividade](docs/guides/testesResponsividade.md) verifica o build de produção com dados simulados, navegação, paginação, menus, cabeçalho, falha/recuperação da API e tamanhos de celular a desktop.
 
@@ -578,4 +623,3 @@ legacy/     Referências de versões anteriores
 - [Integração com IHM/CLP e Opta](docs/guides/integracaoOpta.md)
 - [Teste de responsividade](docs/guides/testesResponsividade.md)
 - [Relatório de sinais operacionais e corrente](docs/reports/sinaisOperacionaisCorrente.md)
-- [Contexto técnico do projeto](docs/CONTEXTO_PROJETO.md)

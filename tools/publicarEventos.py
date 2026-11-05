@@ -1,6 +1,7 @@
 """Lê JSON Lines de stdin e publica em /api/events; respostas em stdout, erros em stderr."""
 import argparse
 import json
+import math
 import os
 import sys
 import urllib.error
@@ -13,8 +14,8 @@ def main(argv=None):
     parser.add_argument('--key', default=os.getenv('INGEST_API_KEY') or os.getenv('DEVICE_API_KEY', ''))
     parser.add_argument('--timeout', type=float, default=10)
     args = parser.parse_args(argv)
-    if args.timeout <= 0:
-        parser.error('--timeout deve ser positivo')
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
+        parser.error('--timeout deve ser finito e positivo')
     for number, line in enumerate(sys.stdin, 1):
         if not line.strip():
             continue

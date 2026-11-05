@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tools'))
 sys.path.insert(0, str(ROOT / 'backend'))
 from publicarEventos import main as publish
+from simuladorCnc import main as simulate
 from schemas.event import EventCreate
 from ponteUsb import Gateway, StdoutEvents, reading_from
 
@@ -24,8 +25,9 @@ def test_simulator_emits_valid_envelopes_without_network_or_collector_identity()
     events = [EventCreate.model_validate_json(line) for line in result.stdout.splitlines()]
     assert len(events) == 6 and len({event.event_id for event in events}) == 6
     assert all(event.machine_id == 'CNC-001' for event in events)
-    assert {next(key for key, active in event.states.items() if active) for event in events} == {
-        'ativo', 'inativo', 'emergencia', 'motor_ligado', 'alarme', 'porta_aberta'}
+    # The cycle follows IHM Q0.0..Q0.5, not the previous alarm/door order.
+    assert [next(key for key, active in event.states.items() if active) for event in events] == [
+        'ativo', 'inativo', 'emergencia', 'motor_ligado', 'porta_aberta', 'alarme']
 
 
 def test_simulator_can_send_simultaneous_door_and_emergency_without_inventing_activity():
@@ -53,6 +55,26 @@ def test_simulator_rejects_invalid_current_without_emitting_an_event(amps):
     result = subprocess.run([sys.executable, str(ROOT / 'tools/simuladorCnc.py'),
         '--machine-id', 'CNC-001', '--current', amps], capture_output=True, text=True)
     assert result.returncode == 2 and result.stdout == ''
+
+
+@pytest.mark.parametrize('interval', ['nan', 'inf', '-inf', '-1'])
+def test_simulator_rejects_invalid_interval_before_emitting_any_event(interval, capsys):
+    with pytest.raises(SystemExit) as error:
+        simulate(['--machine-id', 'CNC-001', '--count', '2', f'--interval={interval}'])
+    assert error.value.code == 2
+    assert capsys.readouterr().out == ''
+
+
+@pytest.mark.parametrize('timeout', ['nan', 'inf', '-inf', '0', '-1'])
+def test_publisher_rejects_invalid_timeout_before_reading_input(timeout, monkeypatch, capsys):
+    monkeypatch.setattr(sys, 'stdin', io.StringIO('{"machine_id":"CNC-001","states":{"ativo":true}}\n'))
+    def unexpected_request(*args, **kwargs):
+        pytest.fail('An invalid timeout must not start a request')
+    monkeypatch.setattr('urllib.request.urlopen', unexpected_request)
+    with pytest.raises(SystemExit) as error:
+        publish([f'--timeout={timeout}'])
+    assert error.value.code == 2
+    assert capsys.readouterr().out == ''
 
 
 def test_publisher_reads_json_lines_and_keeps_responses_in_stdout(monkeypatch, capsys):

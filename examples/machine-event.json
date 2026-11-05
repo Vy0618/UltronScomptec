@@ -5,7 +5,7 @@
     "inativo": false,
     "emergencia": false,
     "motor_ligado": true,
-    "alarme": false,
-    "porta_aberta": false
+    "porta_aberta": false,
+    "alarme": false
   }
 }

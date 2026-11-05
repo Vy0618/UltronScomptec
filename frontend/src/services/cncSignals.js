@@ -1,10 +1,10 @@
 export const CNC_SIGNALS = Object.freeze([
-  { key: "ativo", label: "Ativo" },
-  { key: "inativo", label: "Inativo" },
+  { key: "ativo", label: "Em execução" },
+  { key: "inativo", label: "Parada" },
   { key: "emergencia", label: "Emergência" },
   { key: "motor_ligado", label: "Motor ligado" },
-  { key: "alarme", label: "Alarme / erro" },
   { key: "porta_aberta", label: "Porta aberta" },
+  { key: "alarme", label: "Alerta / erro" },
 ]);
 
 export function machineActiveFromStates(states = {}, fallback = false) {

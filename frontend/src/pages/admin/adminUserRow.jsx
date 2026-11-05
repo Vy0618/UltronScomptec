@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { roles } from "./adminModel";
 
 export default function AdminUserRow({ user, ownAccount, onSaveRole, onToggle, onDelete }) {
   const [role, setRole] = useState(user.role);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => { setRole(user.role); }, [user.role]);
   const protectedAccount = ownAccount || user.managedByEnv;
   return <tr>
     <td><strong>{user.name}</strong><span className="block text-xs text-text-muted">{user.email}</span>{protectedAccount && <span className="block text-xs text-text-muted mt-1">{user.managedByEnv ? "Conta gerenciada pelo servidor" : "Sua conta"}</span>}</td>

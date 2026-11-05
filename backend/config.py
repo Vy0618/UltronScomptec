@@ -17,7 +17,7 @@ def load_json_config(path: Path):
     if not path.is_file():
         return
     try:
-        values = json.loads(path.read_text(encoding="utf-8"))
+        values = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise RuntimeError(f"Configuração JSON inválida em {path}: {error}") from error
     if not isinstance(values, dict):

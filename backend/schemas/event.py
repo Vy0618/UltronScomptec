@@ -1,8 +1,9 @@
 """Hardware-independent event envelope: machine identity and a state snapshot."""
 from datetime import datetime
 from typing import Any, Annotated
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, FiniteFloat, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, FiniteFloat, field_validator
 from schemas.common import UTCModel
+from schemas.observation import validate_current_signals
 
 
 class EventCreate(BaseModel):
@@ -14,12 +15,10 @@ class EventCreate(BaseModel):
     event_id: str | None = Field(default=None, min_length=1, max_length=100)
     timestamp: datetime | None = None
 
-    @model_validator(mode="after")
-    def non_negative_current(self):
-        for key in ("current", "corrente"):
-            if key in self.analog_signals and self.analog_signals[key] < 0:
-                raise ValueError("Corrente em A deve ser não negativa")
-        return self
+    @field_validator("analog_signals", mode="before")
+    @classmethod
+    def valid_current(cls, signals):
+        return validate_current_signals(signals)
 
 
 class EventResponse(UTCModel):

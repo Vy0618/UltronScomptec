@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import sys
 from urllib.parse import parse_qs, urlparse
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from services.signalOutputs import derive_signal_outputs
@@ -26,6 +26,7 @@ def run(url, output, executable=None):
     states = ["OPERANDO", "PARADA", "ALARME", "EMERGENCIA", "SEM_COMUNICACAO", "DADOS_DESATUALIZADOS", "MANUTENCAO", "DESLIGADA"]
     machines = [{"id": f"test-{i}", "code": f"CNC-{i+1:03d}", "name": f"Centro de usinagem {i+1}", "description": "API isolada de teste"} for i in range(40)]
     user = {"id": "test-user", "name": "Operador de Teste", "email": "teste@example.invalid", "role": "admin", "active": True}
+    admin_state = {"users": [user], "audit": [], "incidents": [], "rules": {"current": 22, "temperature": 65, "voltageMin": 200, "voltageMax": 240}}
     calls = Counter()
     unavailable = set()
 
@@ -72,7 +73,11 @@ def run(url, output, executable=None):
         elif path == "/api/auth/me":
             data = user
         elif path == "/api/admin/state":
-            data = {"users": [user], "audit": [], "incidents": [], "rules": {"current": 22, "temperature": 65, "voltageMin": 200, "voltageMax": 240}}
+            data = admin_state
+        elif path == "/api/admin/users/test-review-user" and route.request.method == "PATCH":
+            assert route.request.post_data_json == {"active": False}
+            admin_state["users"][1]["active"] = False
+            data = admin_state
         elif path == "/api/devices" or path.endswith("/incidents"):
             data = []
         else:
@@ -80,6 +85,7 @@ def run(url, output, executable=None):
         route.fulfill(status=200, json=data)
 
     results = []
+    regressions = []
     with sync_playwright() as p:
         browser = p.chromium.launch(**({"executable_path": executable} if executable else {}))
         for width, height in [(320, 568), (390, 844), (640, 900), (768, 1024), (1024, 768), (1366, 768), (1920, 1080)]:
@@ -103,7 +109,7 @@ def run(url, output, executable=None):
                     page.get_by_text("Últimas 100 leituras", exact=False).wait_for()
                     page.get_by_role("heading", name="Corrente · I8 reservada", exact=True).wait_for()
                     page.get_by_text("Valor simulado recebido por comando; não é uma medição física.", exact=True).wait_for()
-                    for signal_label in ("Ativo", "Inativo", "Emergência", "Motor ligado", "Alarme / erro", "Porta aberta"):
+                    for signal_label in ("Em execução", "Parada", "Emergência", "Motor ligado", "Porta aberta", "Alerta / erro"):
                         assert page.get_by_text(signal_label, exact=True).count() > 0
                 else:
                     if path == "/dashboard":
@@ -185,9 +191,94 @@ def run(url, output, executable=None):
         unavailable.clear()
         page.get_by_text("Sem conexão com o backend.", exact=False).wait_for(state="hidden", timeout=12000)
         context.close()
+
+        # A header theme change must not overwrite another unsaved preference,
+        # and saving that preference must keep the newly selected theme.
+        context = browser.new_context(viewport={"width": 1366, "height": 768}, locale="pt-BR")
+        context.route("**/api/**", mock)
+        context.add_init_script("localStorage.setItem('scomptec_user', " + json.dumps(json.dumps(user)) + "); localStorage.setItem('scomptec_access_token', 'test-token');")
+        page = context.new_page()
+        page.goto(url.rstrip("/") + "/configuracoes", wait_until="domcontentloaded")
+        page.get_by_role("heading", name="Configurações da Conta", exact=True).wait_for()
+        toasts = page.get_by_label("Avisos flutuantes", exact=False)
+        expect(toasts).to_be_checked()
+        toasts.uncheck()
+        page.get_by_role("button", name="Ativar tema escuro", exact=True).click()
+        expect(page.locator(".dashboard-theme")).to_have_attribute("data-theme", "dark")
+        expect(page.get_by_role("radio", name="Escuro", exact=True)).to_be_checked()
+        expect(toasts).not_to_be_checked()
+        page.get_by_role("button", name="Salvar preferências", exact=True).click()
+        page.get_by_text("Preferências salvas para sua conta neste dispositivo.", exact=True).wait_for()
+        saved_preferences = page.evaluate("JSON.parse(localStorage.getItem('scomptec_preferences:test-user'))")
+        assert saved_preferences["theme"] == "dark"
+        assert saved_preferences["showToasts"] is False
+        page.reload(wait_until="domcontentloaded")
+        expect(page.locator(".dashboard-theme")).to_have_attribute("data-theme", "dark")
+        expect(page.get_by_role("radio", name="Escuro", exact=True)).to_be_checked()
+        expect(page.get_by_label("Avisos flutuantes", exact=False)).not_to_be_checked()
+        context.close()
+        regressions.append({"name": "tema_externo_preserva_preferencia_pendente_e_salva", "approved": True})
+
+        # Simulate another administrator changing a role. A subsequent operation
+        # refreshes the same user's data while its row remains on screen.
+        # Switching to the overview's refresh button would unmount the table and
+        # hide the stale local selector bug that this scenario must detect.
+        review_user = {"id": "test-review-user", "name": "Pessoa da revisão", "email": "revisao@example.invalid", "role": "operator", "active": True}
+        admin_state["users"] = [user, review_user]
+        context = browser.new_context(viewport={"width": 1366, "height": 768}, locale="pt-BR")
+        context.route("**/api/**", mock)
+        context.add_init_script("localStorage.setItem('scomptec_user', " + json.dumps(json.dumps(user)) + "); localStorage.setItem('scomptec_access_token', 'test-token');")
+        page = context.new_page()
+        page.goto(url.rstrip("/") + "/admin", wait_until="domcontentloaded")
+        page.get_by_role("heading", name="Atividade administrativa", exact=True).wait_for()
+        page.get_by_role("button", name="Usuários", exact=True).click()
+        role = page.get_by_label("Perfil de Pessoa da revisão", exact=True)
+        expect(role).to_have_value("operator")
+        review_user["role"] = "maintenance"
+        page.get_by_role("button", name="Desativar Pessoa da revisão", exact=True).click()
+        expect(role).to_have_value("maintenance")
+        row = page.get_by_role("row").filter(has=role)
+        expect(row.get_by_text("Inativo", exact=True)).to_be_visible()
+        expect(row.get_by_role("button", name="Salvar perfil", exact=True)).to_have_count(0)
+        assert calls["/api/admin/users/test-review-user"] == 1
+        context.close()
+        admin_state["users"] = [user]
+        regressions.append({"name": "perfil_atualizado_para_o_mesmo_usuario", "approved": True})
+
+        # Hold the initial response so loading can be inspected independently
+        # of network timing. A fresh context guarantees there is no cached fleet
+        # capable of turning this into an outage-after-success test.
+        for path, failure, incorrect_empty in (
+            ("/maquinas", "Não foi possível consultar as máquinas", "Nenhuma máquina encontrada"),
+            ("/maquinas/CNC-001", "Não foi possível consultar a máquina CNC.", "Máquina CNC não encontrada no sistema."),
+        ):
+            context = browser.new_context(viewport={"width": 1366, "height": 768}, locale="pt-BR")
+            pending = []
+            context.route("**/api/**", mock)
+            context.route("**/api/cncs/statuses", lambda route: pending.append(route))
+            page = context.new_page()
+            page_errors = []
+            page.on("pageerror", lambda error: page_errors.append(str(error)))
+            with page.expect_request("**/api/cncs/statuses"):
+                page.goto(url.rstrip("/") + path, wait_until="domcontentloaded")
+            loading = page.get_by_label("Carregando dados", exact=True)
+            expect(loading).to_be_visible()
+            expect(page.get_by_text(incorrect_empty, exact=True)).to_have_count(0)
+            assert pending, "A primeira consulta de status deve permanecer pendente."
+            for route in pending:
+                route.fulfill(status=503, json={"detail": "Falha inicial simulada"})
+            expect(page.get_by_text(failure, exact=True)).to_be_visible()
+            expect(page.get_by_text(incorrect_empty, exact=True)).to_have_count(0)
+            expect(loading).to_have_count(0)
+            assert not page_errors, (path, page_errors)
+            context.close()
+            regressions.append({"name": "carregamento_e_erro_inicial", "path": path, "approved": True})
+
         browser.close()
     (output / "resultado.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output / "regressoes.json").write_text(json.dumps(regressions, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"{len(results)} verificações de rota/tela aprovadas; falha e recuperação da API aprovadas.")
+    print(f"{len(regressions)} regressões de preferências, perfil e falha inicial aprovadas.")
     print(f"Relatório e capturas: {output.resolve()}")
 
 

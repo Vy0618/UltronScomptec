@@ -69,6 +69,137 @@
         }
       }
     },
+    "/api/cncs/statuses": {
+      "get": {
+        "tags": [
+          "CNC"
+        ],
+        "summary": "List Cnc Statuses",
+        "operationId": "list_cnc_statuses_api_cncs_statuses_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CNCStatusResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Cnc Statuses Api Cncs Statuses Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cncs/history": {
+      "get": {
+        "tags": [
+          "CNC"
+        ],
+        "summary": "Get Fleet History",
+        "operationId": "get_fleet_history_api_cncs_history_get",
+        "parameters": [
+          {
+            "name": "machine_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Machine Id"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryHistoryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/cncs/{cnc_id}": {
       "get": {
         "tags": [
@@ -335,6 +466,91 @@
         }
       }
     },
+    "/api/cncs/{cnc_id}/incidents": {
+      "get": {
+        "tags": [
+          "CNC"
+        ],
+        "summary": "Get Cnc Incidents",
+        "operationId": "get_cnc_incidents_api_cncs__cnc_id__incidents_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cnc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cnc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cncs/{cnc_id}/utilization": {
+      "get": {
+        "tags": [
+          "CNC"
+        ],
+        "summary": "Get Cnc Utilization",
+        "operationId": "get_cnc_utilization_api_cncs__cnc_id__utilization_get",
+        "parameters": [
+          {
+            "name": "cnc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cnc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices/register": {
       "post": {
         "tags": [
@@ -344,6 +560,16 @@
         "description": "Create the CNC + Arduino Opta WiFi pair, or refresh a previously registered Arduino Opta WiFi.",
         "operationId": "register_device_api_devices_register_post",
         "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Api-Key"
+            }
+          },
           {
             "name": "x-device-key",
             "in": "header",
@@ -623,7 +849,7 @@
     "/api/devices/{device_id}/telemetry": {
       "post": {
         "tags": [
-          "Telemetry"
+          "Telemetry adapter"
         ],
         "summary": "Create Telemetry",
         "operationId": "create_telemetry_api_devices__device_id__telemetry_post",
@@ -635,6 +861,16 @@
             "schema": {
               "type": "string",
               "title": "Device Id"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Api-Key"
             }
           },
           {
@@ -653,7 +889,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TelemetryCreate"
+                "$ref": "#/components/schemas/Observation"
               }
             }
           }
@@ -665,6 +901,69 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TelemetryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events": {
+      "post": {
+        "tags": [
+          "Machine events"
+        ],
+        "summary": "Receive Event",
+        "operationId": "receive_event_api_events_post",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "x-device-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "X-Device-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResponse"
                 }
               }
             }
@@ -790,6 +1089,315 @@
         ]
       }
     },
+    "/api/admin/state": {
+      "get": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Get State",
+        "operationId": "get_state_api_admin_state_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/users": {
+      "post": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Create User",
+        "operationId": "create_user_api_admin_users_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUserCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}": {
+      "patch": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Update User",
+        "operationId": "update_user_api_admin_users__user_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUserUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Delete User",
+        "operationId": "delete_user_api_admin_users__user_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/incidents": {
+      "post": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Create Incident",
+        "operationId": "create_incident_api_admin_incidents_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/incidents/{incident_id}": {
+      "patch": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Update Incident",
+        "operationId": "update_incident_api_admin_incidents__incident_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "incident_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Incident Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/rules": {
+      "put": {
+        "tags": [
+          "Administração"
+        ],
+        "summary": "Save Rules",
+        "operationId": "save_rules_api_admin_rules_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertRules"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -812,6 +1420,111 @@
   },
   "components": {
     "schemas": {
+      "AdminUserCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "maintenance",
+              "operator",
+              "viewer"
+            ],
+            "title": "Role",
+            "default": "operator"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "password"
+        ],
+        "title": "AdminUserCreate"
+      },
+      "AdminUserUpdate": {
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "maintenance",
+                  "operator",
+                  "viewer"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AdminUserUpdate"
+      },
+      "AlertRules": {
+        "properties": {
+          "current": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Current",
+            "default": 22
+          },
+          "temperature": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Temperature",
+            "default": 65
+          },
+          "voltageMin": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Voltagemin",
+            "default": 200
+          },
+          "voltageMax": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Voltagemax",
+            "default": 240
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AlertRules"
+      },
       "CNCCreate": {
         "properties": {
           "name": {
@@ -945,6 +1658,17 @@
             "type": "string",
             "title": "Name"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -976,6 +1700,31 @@
               }
             ],
             "title": "Last Seen"
+          },
+          "online": {
+            "type": "boolean",
+            "title": "Online"
+          },
+          "states": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "States"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/SignalDiagnostic"
+            },
+            "type": "array",
+            "title": "Diagnostics"
+          },
+          "signal_outputs": {
+            "items": {
+              "$ref": "#/components/schemas/SignalOutput"
+            },
+            "type": "array",
+            "title": "Signal Outputs"
           },
           "gateway_online": {
             "type": "boolean",
@@ -1065,6 +1814,7 @@
           "name",
           "status",
           "status_duration_seconds",
+          "online",
           "gateway_online"
         ],
         "title": "CNCStatusResponse"
@@ -1408,6 +2158,124 @@
         "type": "object",
         "title": "DeviceUpdate"
       },
+      "EventCreate": {
+        "properties": {
+          "machine_id": {
+            "type": "string",
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Machine Id",
+            "description": "UUID, código ou alias numérico da máquina cadastrada (1 = CNC-001)"
+          },
+          "states": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "maxProperties": 64,
+            "minProperties": 1,
+            "title": "States",
+            "description": "Snapshot completo dos estados observados; ausente significa não informado"
+          },
+          "analog_signals": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "maxProperties": 64,
+            "title": "Analog Signals",
+            "description": "Medições opcionais; current/corrente em A. Ausente não representa zero"
+          },
+          "extra_signals": {
+            "additionalProperties": true,
+            "type": "object",
+            "maxProperties": 64,
+            "title": "Extra Signals"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "machine_id",
+          "states"
+        ],
+        "title": "EventCreate"
+      },
+      "EventResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "machine_id": {
+            "type": "string",
+            "title": "Machine Id"
+          },
+          "states": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "States"
+          },
+          "analog_signals": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Analog Signals"
+          },
+          "extra_signals": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extra Signals"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Received At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "machine_id",
+          "states",
+          "timestamp",
+          "received_at"
+        ],
+        "title": "EventResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1420,6 +2288,100 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "IncidentCreate": {
+        "properties": {
+          "machineId": {
+            "type": "string",
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Machineid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "Crítica",
+              "Alta",
+              "Média",
+              "Baixa"
+            ],
+            "title": "Priority",
+            "default": "Alta"
+          },
+          "assignee": {
+            "type": "string",
+            "maxLength": 36,
+            "title": "Assignee",
+            "default": ""
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "machineId",
+          "title"
+        ],
+        "title": "IncidentCreate"
+      },
+      "IncidentUpdate": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "Aberta",
+                  "Em atendimento",
+                  "Resolvida"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 36
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "attendance": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendance"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "IncidentUpdate"
       },
       "LoginRequest": {
         "properties": {
@@ -1442,35 +2404,7 @@
         ],
         "title": "LoginRequest"
       },
-      "RegisterRequest": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 2,
-            "title": "Name"
-          },
-          "email": {
-            "type": "string",
-            "format": "email",
-            "title": "Email"
-          },
-          "password": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 8,
-            "title": "Password"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "email",
-          "password"
-        ],
-        "title": "RegisterRequest"
-      },
-      "TelemetryCreate": {
+      "Observation": {
         "properties": {
           "event_id": {
             "anyOf": [
@@ -1484,7 +2418,7 @@
               }
             ],
             "title": "Event Id",
-            "description": "Identificador persistido pelo Opta e reutilizado nas tentativas da mesma leitura"
+            "description": "Identificador persistido pelo produtor e reutilizado nas tentativas da mesma leitura"
           },
           "machine_active": {
             "type": "boolean",
@@ -1539,7 +2473,7 @@
               }
             ],
             "title": "Timestamp",
-            "description": "Horário UTC do Opta (ISO 8601 com Z). Omita se o relógio não estiver sincronizado."
+            "description": "Horário UTC da coleta (ISO 8601 com Z). Omita se o relógio não estiver sincronizado."
           }
         },
         "additionalProperties": false,
@@ -1547,7 +2481,112 @@
         "required": [
           "machine_active"
         ],
-        "title": "TelemetryCreate"
+        "title": "Observation"
+      },
+      "RegisterRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "password"
+        ],
+        "title": "RegisterRequest"
+      },
+      "SignalDiagnostic": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Signals"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "severity",
+          "title",
+          "message",
+          "signals"
+        ],
+        "title": "SignalDiagnostic"
+      },
+      "SignalOutput": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "info",
+              "attention",
+              "critical"
+            ],
+            "title": "Level"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Signals"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "level",
+          "title",
+          "message",
+          "signals"
+        ],
+        "title": "SignalOutput"
       },
       "TelemetryHistoryResponse": {
         "properties": {
@@ -1587,8 +2626,40 @@
             "title": "Id"
           },
           "device_id": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Device Id"
+          },
+          "machine_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Machine Id"
+          },
+          "states": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "States"
           },
           "timestamp": {
             "type": "string",
@@ -1650,12 +2721,18 @@
               }
             ],
             "title": "Extra Signals"
+          },
+          "signal_outputs": {
+            "items": {
+              "$ref": "#/components/schemas/SignalOutput"
+            },
+            "type": "array",
+            "title": "Signal Outputs"
           }
         },
         "type": "object",
         "required": [
           "id",
-          "device_id",
           "timestamp",
           "received_at",
           "machine_active"

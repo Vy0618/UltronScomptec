@@ -27,10 +27,60 @@ bool parseHttp(const std::string& bytes, ultron::HttpResponse& response, bool ho
   MemoryClient client{bytes, 0, hold}; uint32_t now = 0;
   return ultron::readHttpResponse(client, [&]() { return now; }, [&]() { ++now; }, 100, response);
 }
+
+void assertBoolean(JsonVariantConst value, bool expected) {
+  assert(value.is<bool>());
+  assert(value.as<bool>() == expected);
+}
+
+void assertWiring(JsonVariantConst payload, uint8_t bits) {
+  // Contract from the IHM wiring, deliberately independent of DIGITAL_SIGNAL_NAMES:
+  // Q0.0..Q0.5 -> I1..I6 = active, stopped, emergency, motor, door, alarm.
+  const auto states = payload["digital_signals"];
+  assert(states.size() == 6);
+  assertBoolean(states["ativo"], bool(bits & 0x01));
+  assertBoolean(states["inativo"], bool(bits & 0x02));
+  assertBoolean(states["emergencia"], bool(bits & 0x04));
+  assertBoolean(states["motor_ligado"], bool(bits & 0x08));
+  assertBoolean(states["porta_aberta"], bool(bits & 0x10));
+  assertBoolean(states["alarme"], bool(bits & 0x20));
+  assertBoolean(payload["machine_active"], bool(bits & 0x01) && !(bits & 0x02));
+  assert(payload["voltage_24v"].isNull());
+  assert(payload["analog_signals"].size() == 0);
+  const auto extra = payload["extra_signals"];
+  assert(extra["profile"] == "six_signals_current_reserved_v3");
+  assert(extra["spare_input"] == "I7");
+  assert(extra["current_input"]["input"] == "I8");
+  assert(extra["current_input"]["unit"] == "A");
+  assert(extra["current_input"]["source"] == "unavailable");
+  assertBoolean(extra["current_input"]["physical_enabled"], false);
+  const auto raw = extra["entradas_brutas"];
+  assert(raw.size() == 6);
+  for (unsigned i = 0; i < 6; ++i) {
+    char pin[3] = {'I', char('1' + i), '\0'};
+    assertBoolean(raw[pin], bool(bits & (1U << i)));
+  }
+  assert(raw["I7"].isNull() && raw["I8"].isNull());
+  if (bits == 0x10) {
+    assertBoolean(states["porta_aberta"], true);
+    assertBoolean(states["alarme"], false);
+  }
+  if (bits == 0x20) {
+    assertBoolean(states["porta_aberta"], false);
+    assertBoolean(states["alarme"], true);
+  }
+  if ((bits & 0x03) == 0x03) {
+    assertBoolean(states["ativo"], true);
+    assertBoolean(states["inativo"], true);
+    assertBoolean(payload["machine_active"], false);
+  }
+}
+
 int main(int argc, char** argv) {
   // Every port combination preserves six signals and never treats I8 as digital/current.
-  const char* signalNames[] = {"ativo", "inativo", "emergencia", "motor_ligado", "alarme", "porta_aberta"};
   ultron::TelemetryCore<2> monitorCore(1000, 15000);
+  ultron::TelemetryCore<2> httpProfile(1000, 15000);
+  registerCore(httpProfile, 0);
   for (unsigned bits = 0; bits < 256; ++bits) {
     CncSnapshot s;
     s.activeInputs = s.rawInputs = uint8_t(bits);
@@ -39,25 +89,19 @@ int main(int argc, char** argv) {
     ultron::Reading reading;
     assert(monitorCore.takeUsb(bits, reading));
     char wire[ultron::PAYLOAD_BYTES];
-    assert(ultron::serializeUsbReading(reading, "opta-monitor-usb-2.0.0", 0, wire, sizeof(wire)));
+    assert(ultron::serializeUsbReading(reading, "opta-monitor-usb-2.1.1", 0, wire, sizeof(wire)));
     JsonDocument json; assert(!deserializeJson(json, wire));
     auto payload = json["payload"];
     assert(json["machine_id"] == "1");
-    assert(payload["digital_signals"].size() == 6);
-    assert(payload["machine_active"].as<bool>() == (bool(bits & 1) && !(bits & 2)));
-    assert(payload["voltage_24v"].isNull());
-    assert(payload["analog_signals"].size() == 0);
-    assert(payload["extra_signals"]["profile"] == "six_signals_current_reserved_v2");
-    assert(payload["extra_signals"]["current_input"]["input"] == "I8");
-    assert(payload["extra_signals"]["current_input"]["source"] == "unavailable");
-    assert(payload["extra_signals"]["current_input"]["physical_enabled"] == false);
-    assert(payload["extra_signals"]["entradas_brutas"].size() == 6);
-    for (unsigned i = 0; i < 6; ++i) {
-      assert(payload["digital_signals"][signalNames[i]].is<bool>());
-      assert(payload["digital_signals"][signalNames[i]].as<bool>() == bool(bits & (1U << i)));
-      char pin[3] = {'I', char('1' + i), '\0'};
-      assert(payload["extra_signals"]["entradas_brutas"][pin].as<bool>() == bool(bits & (1U << i)));
-    }
+    assert(json["firmware_version"] == "opta-monitor-usb-2.1.1");
+    assertWiring(payload, uint8_t(bits));
+    assert(httpProfile.enqueue(s) && httpProfile.prepare(bits));
+    assert(ultron::serializePending(httpProfile.pending(), httpProfile.bootId(), 0));
+    JsonDocument httpJson;
+    assert(!deserializeJson(httpJson, httpProfile.pending().body));
+    assertWiring(httpJson.as<JsonVariantConst>(), uint8_t(bits));
+    assert(httpJson["extra_signals"]["transport"] == "wifi_http");
+    httpProfile.httpResult(201);
     if (bits == 255 && argc > 3) {
       std::ofstream output(argv[3]); assert(output.good());
       output << "CNC_JSON:" << wire << "\n";
@@ -68,13 +112,13 @@ int main(int argc, char** argv) {
   assert(!monitorCore.enqueue(unchanged));
   unchanged.capturedMs = 1255;
   assert(monitorCore.enqueue(unchanged));
-  puts("PASS boolean profile: all 256 combinations / changes on every input / heartbeat / USB contract");
+  puts("PASS IHM wiring: 256 combinations / I5 door / I6 alarm / activity conflicts / USB and HTTP contract");
 
   ultron::TelemetryCore<16> core(1000, 15000);
   assert(core.enqueue(sample(100)));
   assert(!core.enqueue(sample(200)));
   assert(core.enqueue(sample(220, 1)));
-  auto alarm = sample(240, 128);
+  auto alarm = sample(240, 0x20);
   assert(core.enqueue(alarm)); assert(core.queued() == 3);
   registerCore(core, 1000);
   assert(core.prepare(1000));
@@ -144,7 +188,7 @@ int main(int argc, char** argv) {
   assert(usb.takeUsb(30, usbReading) && usbReading.sequence == 1);
   assert(usb.takeUsb(30, usbReading) && usbReading.sequence == 2);
   char usbBody[ultron::PAYLOAD_BYTES];
-  assert(ultron::serializeUsbReading(usbReading, "opta-monitor-usb-2.0.0", 3, usbBody, sizeof(usbBody)));
+  assert(ultron::serializeUsbReading(usbReading, "opta-monitor-usb-2.1.1", 3, usbBody, sizeof(usbBody)));
   JsonDocument usbJson; assert(!deserializeJson(usbJson, usbBody));
   assert(usbJson["protocol"] == 1 && usbJson["sequence"] == 2);
   assert(usbJson["payload"]["machine_active"] == true);
@@ -167,7 +211,8 @@ int main(int argc, char** argv) {
   if (argc > 1) {
     std::ofstream output(argv[1]); assert(output.good()); output << "[";
     ultron::TelemetryCore<16> fixture(1000, 15000); registerCore(fixture, 0);
-    const uint8_t signals[] = {0x02, 0x09, 0x02, 0x04, 0x10, 0x20};
+    // Preserve the fixture's functional order: stopped, active, stopped, emergency, alarm, door.
+    const uint8_t signals[] = {0x02, 0x09, 0x02, 0x04, 0x20, 0x10};
     for (unsigned i = 0; i < 6; ++i) {
       auto s = sample(i * 1000, signals[i]);
       assert(fixture.enqueue(s) && fixture.prepare(s.capturedMs));
@@ -177,5 +222,25 @@ int main(int argc, char** argv) {
     }
     output << "]\n";
     puts("PASS fixture: actual firmware JSON exported");
+  }
+
+  // Real USB frames for bridge -> API checks, independent of production signal order.
+  if (argc > 4) {
+    std::ofstream output(argv[4]); assert(output.good());
+    ultron::TelemetryCore<2> ihmFixture(1000, 15000);
+    const uint8_t inputs[] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x14, 0x24};
+    for (unsigned i = 0; i < 8; ++i) {
+      const auto s = sample(i * 1000, inputs[i]);
+      assert(ihmFixture.enqueue(s));
+      ultron::Reading reading;
+      assert(ihmFixture.takeUsb(s.capturedMs, reading));
+      assert(reading.sequence == i + 1);
+      char wire[ultron::PAYLOAD_BYTES];
+      assert(ultron::serializeUsbReading(reading, "opta-monitor-usb-2.1.1", 0, wire, sizeof(wire)));
+      JsonDocument json; assert(!deserializeJson(json, wire));
+      assertWiring(json["payload"], inputs[i]);
+      output << "CNC_JSON:" << wire << "\n";
+    }
+    puts("PASS IHM fixture: I1-I6 one-hot / emergency+door / emergency+alarm / actual USB JSON exported");
   }
 }

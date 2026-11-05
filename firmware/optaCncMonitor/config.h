@@ -50,9 +50,9 @@ constexpr char MACHINE_ID[] = ULTRON_MACHINE_ID;
 static_assert(sizeof(MACHINE_ID) > 1 && sizeof(MACHINE_ID) <= 37, "Machine ID must have 1..36 characters");
 
 #if ULTRON_TELEMETRY_USB
-constexpr char FIRMWARE_VERSION[] = "opta-monitor-usb-2.1.0";
+constexpr char FIRMWARE_VERSION[] = "opta-monitor-usb-2.1.1";
 #else
-constexpr char FIRMWARE_VERSION[] = "opta-monitor-wifi-2.1.0";
+constexpr char FIRMWARE_VERSION[] = "opta-monitor-wifi-2.1.1";
 #endif
 constexpr uint32_t SEND_INTERVAL_MS = 1000;
 constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
@@ -61,7 +61,8 @@ constexpr uint32_t MAX_PENDING_MS = 15000;
 constexpr uint32_t HTTP_RETRY_INTERVAL_MS = 1000;
 constexpr size_t TELEMETRY_QUEUE_CAPACITY = 16;
 
-// I1..I6/A0..A5: ativo, inativo, emergência, motor ligado, alarme/erro, porta aberta.
+// IHM Q0.0..Q0.5 -> I1..I6/A0..A5, wired in that order:
+// em execução (ativo), parada (inativo), emergência, motor ligado, porta aberta, alerta/erro (alarme).
 // I7/A6 is spare; I8/A7 is reserved for current, with physical measurement disabled.
 // Set a bit to 1 for an active-LOW digital input (e.g. 0x04 inverts emergency/I3).
 #ifndef ULTRON_INPUT_ACTIVE_LOW_MASK

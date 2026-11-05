@@ -6,12 +6,12 @@
     "inativo": false,
     "emergencia": false,
     "motor_ligado": true,
-    "alarme": false,
-    "porta_aberta": false
+    "porta_aberta": false,
+    "alarme": false
   },
   "analog_signals": {},
   "extra_signals": {
-    "profile": "six_signals_current_reserved_v2",
+    "profile": "six_signals_current_reserved_v3",
     "uptime_seconds": 1,
     "capturado_millis": 1000,
     "entradas_brutas": {

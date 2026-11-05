@@ -1,4 +1,4 @@
-// Arduino Opta: monitoramento booleano I1..I8; serial USB por padrão.
+// Arduino Opta: IHM Q0.0..Q0.5 -> I1..I6; I7 livre, I8 reservada; USB por padrão.
 #include "cncMonitor.h"
 
 void setup() { cncSetup(); }

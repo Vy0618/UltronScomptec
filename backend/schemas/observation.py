@@ -1,7 +1,21 @@
 """Normalized internal observation, shared by producer adapters."""
 from datetime import datetime
+from math import isfinite
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict, StrictBool, FiniteFloat
+from pydantic import BaseModel, Field, ConfigDict, StrictBool, FiniteFloat, field_validator
+
+
+def validate_current_signals(signals):
+    """Keep the current contract identical for direct events and device adapters."""
+    if isinstance(signals, dict):
+        for key in ("current", "corrente"):
+            if key not in signals:
+                continue
+            value = signals[key]
+            if (isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0
+                    or (isinstance(value, float) and not isfinite(value))):
+                raise ValueError("Corrente em A deve ser um número finito e não negativo")
+    return signals
 
 
 class Observation(BaseModel):
@@ -16,4 +30,9 @@ class Observation(BaseModel):
         default=None,
         description="Horário UTC da coleta (ISO 8601 com Z). Omita se o relógio não estiver sincronizado.",
     )
+
+    @field_validator("analog_signals", mode="before")
+    @classmethod
+    def valid_current(cls, signals):
+        return validate_current_signals(signals)
 

@@ -56,3 +56,19 @@ def test_invalid_json_config_stops_startup(tmp_path):
     local.write_text('{invalid')
     with pytest.raises(RuntimeError, match="Configuração JSON inválida"):
         loader(local)
+
+
+def test_json_config_accepts_windows_utf8_bom_and_preserves_environment_priority(tmp_path, monkeypatch):
+    config_path = Path(__file__).resolve().parents[1] / "config.py"
+    monkeypatch.setenv("ULTRON_SIMULATION", "true")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///from-environment.db")
+    monkeypatch.delenv("ADMIN_NAME", raising=False)
+    local = tmp_path / "config.json"
+    local.write_text(json.dumps({"DATABASE_URL": "sqlite:///from-json.db", "ADMIN_NAME": "Administração"},
+                                ensure_ascii=False), encoding="utf-8-sig")
+    loader = runpy.run_path(str(config_path))["load_json_config"]
+
+    loader(local)
+
+    assert os.environ["DATABASE_URL"] == "sqlite:///from-environment.db"
+    assert os.environ["ADMIN_NAME"] == "Administração"

@@ -27,7 +27,18 @@ A coleta física para CNC Mitsubishi M60, M70 e M80 continua possível por IHM/C
 
 As consultas de estado e de histórico também expõem `signal_outputs`: uma lista de interpretações com `code`, `level` (`info`, `attention` ou `critical`), `title`, `message` e `signals`. A fonte única é `backend/services/signalOutputs.py`. O painel **Interações entre sinais** da dashboard filtra por máquina e nível, pagina seis máquinas e oferece acesso a todas as interpretações nos detalhes. Condições sem falha, leitura parcial e corrente simulada também geram saídas. Os outputs não mudam o estado nem acionam relés; sem comunicação atual, ficam identificados como antigos. Interpretações informativas não geram toasts repetidos.
 
-O firmware usa I1–I6 para os seis sinais na ordem do perfil; I7 fica livre e I8/A7 é reservada para corrente, sem leitura física. O `Main.pdf` ainda representa o mapeamento anterior e não inclui porta aberta: os sinais disponibilizados pelo CLP devem corresponder ao novo perfil antes do ensaio físico. O simulador emite os seis sinais e aceita `--also emergencia`, por exemplo, junto de `--state porta_aberta`.
+O firmware USB/HTTP 2.1.1 usa o perfil `six_signals_current_reserved_v3`. O mapa da IHM informado para a instalação determina a ligação sequencial esperada abaixo; a conexão elétrica e a polaridade devem ser conferidas na bancada.
+
+| Saída IHM/CLP esperada | Indicação na IHM | Entrada Opta | Chave em `states` |
+|---|---|---|---|
+| Q0.0 | Em execução | I1/A0 | `ativo` |
+| Q0.1 | Parada | I2/A1 | `inativo` |
+| Q0.2 | Emergência | I3/A2 | `emergencia` |
+| Q0.3 | Motor ligado | I4/A3 | `motor_ligado` |
+| Q0.4 | Porta aberta | I5/A4 | `porta_aberta` |
+| Q0.5 | Alerta erro | I6/A5 | `alarme` |
+
+I7/A6 fica livre e I8/A7 é reservada para corrente, sem leitura física. O `Main.pdf` ainda representa o mapeamento anterior e não confirma o vínculo atual. A troca da posição física dos dois últimos sinais não muda as chaves JSON nem suas regras na aplicação. O simulador emite os seis sinais e aceita `--also emergencia`, por exemplo, junto de `--state porta_aberta`.
 
 `analog_signals` e `extra_signals` são campos opcionais do evento. `analog_signals.current` é uma corrente finita e não negativa em A; números como strings, booleanos e null são rejeitados. Sem leitura, omitir a chave, sem representar ausência como zero. `--current 12.5` no simulador envia corrente marcada por `extra_signals.current_input.source="simulated"`. Firmware, ponte, API, histórico e dashboard preservam o valor e sua origem. I8 não é consultada digitalmente nem por ADC enquanto a medição física estiver desativada.
 

@@ -4,6 +4,7 @@ import copy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import math
 import os
 from pathlib import Path
 import queue
@@ -17,6 +18,26 @@ from uuid import UUID, uuid4
 
 MAX_FRAME_BYTES = 16384
 MAX_PENDING_SECONDS = 15
+DEFAULT_SIMULATED_CURRENT = 24.0
+
+
+def current_in_amps(value):
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        amps = float(value)
+        if not math.isfinite(amps) or amps < 0:
+            raise ValueError
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError('corrente simulada deve ser finita e nao negativa, em A') from None
+    return amps
+
+
+def finite_json_number(text):
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError('número não finito')
+    return value
 
 
 class Frames:
@@ -36,7 +57,7 @@ class Frames:
             self.buffer = ''
             raise ValueError('frame excede o limite')
         try:
-            frame = json.loads(self.buffer, parse_constant=lambda value: (_ for _ in ()).throw(ValueError('número não finito')))
+            frame = json.loads(self.buffer, parse_float=finite_json_number, parse_constant=finite_json_number)
         except json.JSONDecodeError:
             return None
         finally:
@@ -66,7 +87,7 @@ class Reading:
 def reading_from(frame):
     if not isinstance(frame, dict):
         raise ValueError('frame deve ser objeto')
-    if frame.get('protocol') != 1 or 'payload' not in frame:
+    if type(frame.get('protocol')) is not int or frame['protocol'] != 1 or 'payload' not in frame:
         raise ValueError('protocolo USB incompatível')
     identity = frame.get('machine_id')
     if identity is not None:
@@ -103,7 +124,10 @@ class HttpApi:
             headers['X-Device-Key'] = self.key
         req = urllib.request.Request(self.base_url + path, json.dumps(body, allow_nan=False).encode(), headers)
         with urllib.request.urlopen(req, timeout=3) as response:
-            return json.load(response)
+            result = json.load(response)
+            if not isinstance(result, dict):
+                raise ValueError('resposta da API deve ser objeto JSON')
+            return result
 
 
 class StdoutEvents:
@@ -114,9 +138,10 @@ class StdoutEvents:
 
 class Gateway:
     """Adapta a aquisição para eventos de máquina; cadastro por MAC é compatibilidade."""
-    def __init__(self, api, mac=None, device_id=None, machine_id=None):
+    def __init__(self, api, mac=None, device_id=None, machine_id=None, *, simulated_current=None):
         self.api, self.mac, self.device_id = api, mac, device_id
         self.machine_id = machine_id
+        self.simulated_current = None if simulated_current is None else current_in_amps(simulated_current)
         self.use_frame_machine = not (machine_id or mac or device_id)
         self.session = str(uuid4())
         self.previous = None
@@ -133,6 +158,17 @@ class Gateway:
         data['event_id'] = f'{self.session}:{reading.sequence}'
         data['timestamp'] = reading.captured_at  # Recepção USB UTC, preservada nos retries.
         data['extra_signals']['boot_id'] = self.session
+        analog = data.get('analog_signals', {})
+        current_input = data['extra_signals'].get('current_input', {})
+        physical_current_enabled = isinstance(current_input, dict) and current_input.get('physical_enabled') is True
+        if (self.simulated_current is not None and not physical_current_enabled
+                and not any(key in analog for key in ('current', 'corrente'))):
+            # Enrich this same reading. Never replace the real digital snapshot,
+            # a received current (including zero), or a physical sensor reading.
+            data.setdefault('analog_signals', {})['current'] = self.simulated_current
+            data['extra_signals']['current_input'] = {
+                'input': 'I8', 'unit': 'A', 'source': 'simulated', 'physical_enabled': False,
+            }
         if self.machine_id or self.use_frame_machine:
             analog = data.get('analog_signals', {})
             extra = data.get('extra_signals', {})
@@ -140,8 +176,7 @@ class Gateway:
                     'event_id': data['event_id'], 'timestamp': data['timestamp']}
             if analog:
                 data['analog_signals'] = analog
-            if 'current_input' in extra:
-                data['extra_signals'] = {'current_input': extra['current_input']}
+            data['extra_signals'] = extra
         self.previous_payload = copy.deepcopy(data)
         return data
 
@@ -151,6 +186,9 @@ class Gateway:
         if not self.device_id:
             result = self.api.post('/devices/register', {'mac_address':self.mac, 'ip_address':None,
                                                         'firmware_version':reading.firmware})
+            if (not isinstance(result, dict) or not isinstance(result.get('device'), dict)
+                    or not isinstance(result['device'].get('id'), str)):
+                raise ValueError('resposta de cadastro inválida')
             self.device_id = str(UUID(result['device']['id']))
             print('Coletor cadastrado:', self.device_id, file=sys.stderr, flush=True)
         return self.api.post(f'/devices/{self.device_id}/telemetry', payload)
@@ -228,6 +266,10 @@ def main():
     parser.add_argument('--listar-portas', action='store_true', help='Lista portas USB/serial e encerra')
     parser.add_argument('--api', default='http://127.0.0.1:8000/api')
     parser.add_argument('--stdout', action='store_true', help='Emite eventos JSON Lines sem rede; usa o ID do firmware (padrão 1) ou --machine-id')
+    parser.add_argument('--simular-corrente', action='store_true',
+                        help=f'Acrescenta corrente virtual fixa de {DEFAULT_SIMULATED_CURRENT:g} A quando nao ha medicao; preserva os sinais do Opta')
+    parser.add_argument('--corrente', type=current_in_amps, metavar='AMPERES',
+                        help='Define a corrente virtual fixa em A e ativa a simulacao; aceita zero (ex.: --corrente 18.2)')
     identity = parser.add_mutually_exclusive_group()
     identity.add_argument('--machine-id', help='Substitui o ID enviado no firmware; omitido usa o ID serial (padrão 1)')
     identity.add_argument('--mac', help='MAC real do Opta usado no cadastro existente')
@@ -253,7 +295,12 @@ def main():
             parser.error('--device-id deve ser UUID')
     pending, stop = queue.Queue(maxsize=1), threading.Event()
     api = StdoutEvents() if args.stdout else HttpApi(args.api, os.getenv('INGEST_API_KEY') or os.getenv('DEVICE_API_KEY', ''))
-    gateway = Gateway(api, args.mac, args.device_id, args.machine_id)
+    simulated_current = (args.corrente if args.corrente is not None else
+                         DEFAULT_SIMULATED_CURRENT if args.simular_corrente else None)
+    gateway = Gateway(api, args.mac, args.device_id, args.machine_id, simulated_current=simulated_current)
+    if simulated_current is not None:
+        print(f'Corrente virtual fixa: {simulated_current:g} A; usada somente sem corrente recebida. '
+              'Origem simulada, sem leitura fisica de I8.', file=sys.stderr, flush=True)
     worker = threading.Thread(target=sender, args=(gateway, pending, stop), daemon=True)
     worker.start()
     try:

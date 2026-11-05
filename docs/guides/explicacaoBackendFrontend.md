@@ -39,4 +39,6 @@ A aplicação apresenta os estados recebidos e diferencia ausência de informaç
 
 Uma das fontes possíveis é computador/máquina → IHM/CLP → Arduino Opta → serial → adaptador. O contexto industrial inclui CNC Mitsubishi M60, M70 e M80. A ligação pouco invasiva e a autorização das interfaces devem ser validadas para cada instalação. O contrato de eventos não depende desse fabricante nem implementa seu protocolo proprietário.
 
+O perfil físico `six_signals_current_reserved_v3`, no firmware USB/HTTP 2.1.1, segue o mapa da IHM informado. A ligação sequencial esperada é Q0.0 (Em execução)→I1/A0→`ativo`, Q0.1 (Parada)→I2/A1→`inativo`, Q0.2 (Emergência)→I3/A2→`emergencia`, Q0.3 (Motor ligado)→I4/A3→`motor_ligado`, Q0.4 (Porta aberta)→I5/A4→`porta_aberta` e Q0.5 (Alerta erro)→I6/A5→`alarme`. I7/A6 permanece livre e I8/A7 reservada para corrente, com leitura física desativada. Esse é o vínculo esperado, a conferir eletricamente e quanto à polaridade na bancada; não registra uma validação de hardware. A posição física não altera as chaves ou regras de interpretação da API e da dashboard.
+
 Configuração, testes com `curl`, pipelines e execução local estão no [README](../../README.md).

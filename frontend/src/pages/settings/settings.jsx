@@ -13,7 +13,9 @@ function Toggle({ title, description, checked, onChange }) {
 
 export default function Settings() {
   const preferences = usePreferences();
-  const [form, setForm] = useState(preferences);
+  const [changes, setChanges] = useState({});
+  // Keep untouched fields in sync with changes made in the header or another tab.
+  const form = { ...preferences, ...changes };
   const [user, setUser] = useState(readSessionUser);
   const [profileStatus, setProfileStatus] = useState("Carregando dados da conta...");
   const [feedback, setFeedback] = useState(null);
@@ -27,11 +29,20 @@ export default function Settings() {
     });
     return () => { active = false; };
   }, []);
-  const update = (key, value) => { setForm((current) => ({ ...current, [key]: value })); setFeedback(null); };
+  const update = (key, value) => {
+    setChanges((current) => {
+      const next = { ...current };
+      if (value === preferences[key]) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    setFeedback(null);
+  };
   const handleSave = (event) => {
     event.preventDefault();
     try {
       savePreferences(form);
+      setChanges({});
       setFeedback({ error: false, text: "Preferências salvas para sua conta neste dispositivo." });
     } catch {
       setFeedback({ error: true, text: "Não foi possível salvar. Verifique o armazenamento do aplicativo e tente novamente." });
@@ -82,7 +93,7 @@ export default function Settings() {
       {feedback && <p role={feedback.error ? "alert" : "status"} className={`rounded-lg border p-3 text-sm ${feedback.error ? "border-rose-500/40 text-rose-400" : "border-accent/30 text-accent"}`}>{feedback.text}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-text-muted">{dirty ? "Você tem alterações não salvas." : "Preferências deste dispositivo."}</p>
-        <div className="flex flex-wrap gap-3"><button type="button" onClick={() => { setForm({ ...DEFAULT_PREFERENCES }); setFeedback(null); }} className="flex items-center gap-2 rounded-lg border border-base-border px-3 py-2 text-xs text-text-secondary"><RotateCcw size={14} />Restaurar padrão</button><button type="submit" disabled={!dirty} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"><Save size={15} />Salvar preferências</button></div>
+        <div className="flex flex-wrap gap-3"><button type="button" onClick={() => { setChanges({ ...DEFAULT_PREFERENCES }); setFeedback(null); }} className="flex items-center gap-2 rounded-lg border border-base-border px-3 py-2 text-xs text-text-secondary"><RotateCcw size={14} />Restaurar padrão</button><button type="submit" disabled={!dirty} className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"><Save size={15} />Salvar preferências</button></div>
       </div>
     </form>
   </div>;

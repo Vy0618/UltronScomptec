@@ -84,7 +84,7 @@ function MetricGauge({
 
 export default function MachineDetails() {
   const { id } = useParams();
-  const { machine: currentMachine, loading } = useMachine(id);
+  const { machine: currentMachine, loading, error } = useMachine(id);
   const { allEvents, companies, sectors, units, demoMode } = useMonitoring();
   const resources = useMachineHistory(currentMachine, demoMode);
   const machine = resources.machine;
@@ -94,8 +94,9 @@ export default function MachineDetails() {
     return (
       <div className="panel p-12 text-center space-y-4">
         <p className="text-sm font-semibold text-text-secondary">
-          Máquina CNC não encontrada no sistema.
+          {error ? "Não foi possível consultar a máquina CNC." : "Máquina CNC não encontrada no sistema."}
         </p>
+        {error && <p role="alert" className="text-sm text-amber-500">{error}</p>}
         <Link to="/maquinas" className="btn-primary">
           <ArrowLeft size={15} /> Voltar para lista de máquinas
         </Link>

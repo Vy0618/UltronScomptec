@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Search, TriangleAlert, X, Factory } from "lucide-react";
 import MachineCard from "../../components/machineCard/machineCard";
 import EmptyState from "../../components/emptyState/emptyState";
+import LoadingState from "../../components/loadingState/loadingState";
 import { useMachines } from "../../hooks/useMachines";
 import { useMonitoring } from "../../contexts/monitoringContext";
 import { isActiveProblem } from "../../utils/problems";
@@ -18,7 +19,7 @@ const QUICK_FILTERS = [
 ];
 
 export default function Machines() {
-  const { machines } = useMachines();
+  const { machines, loading, error } = useMachines();
   const { scopeSummary, selectedScope, companies, units } = useMonitoring();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -191,7 +192,14 @@ export default function Machines() {
       )}
 
       {/* Machine Grid */}
-      {filtered.length === 0 ? (
+      {loading ? (
+        <LoadingState />
+      ) : error && machines.length === 0 ? (
+        <EmptyState
+          title="Não foi possível consultar as máquinas"
+          description={error}
+        />
+      ) : filtered.length === 0 ? (
         <EmptyState
           title="Nenhuma máquina encontrada"
           description="Nenhuma máquina CNC corresponde aos filtros ou busca aplicados."

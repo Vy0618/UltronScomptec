@@ -7,7 +7,7 @@ import sys
 import time
 from uuid import uuid4
 
-SIGNALS = ("ativo", "inativo", "emergencia", "motor_ligado", "alarme", "porta_aberta")
+SIGNALS = ("ativo", "inativo", "emergencia", "motor_ligado", "porta_aberta", "alarme")
 
 
 def main(argv=None):
@@ -22,8 +22,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if not args.machine_id.strip() or len(args.machine_id.strip()) > 36:
         parser.error('--machine-id deve conter entre 1 e 36 caracteres')
-    if args.count < -1 or args.interval < 0:
-        parser.error('--count deve ser -1 ou não negativo; --interval não pode ser negativo')
+    if args.count < -1 or not math.isfinite(args.interval) or args.interval < 0:
+        parser.error('--count deve ser -1 ou não negativo; --interval deve ser finito e não negativo')
     if args.current is not None and (not math.isfinite(args.current) or args.current < 0):
         parser.error('--current deve ser finita e não negativa, em A')
     index = 0
