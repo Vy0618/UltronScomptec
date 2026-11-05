@@ -73,14 +73,14 @@ def test_utilization_handles_timeout_boundaries_and_priority():
     result = calculate_utilization([sample(3650), sample(3620, alarme=True), sample(10, emergencia=True)], now, timeout=90)
     buckets = result["buckets"]
     assert sum(item["seconds"]["OPERANDO"] for item in buckets) == 30
-    assert sum(item["seconds"]["ALARME"] for item in buckets) == 90
-    assert sum(item["seconds"]["EMERGENCIA"] for item in buckets) == 10
-    assert buckets[-2]["seconds"]["ALARME"] == 20
-    assert buckets[-1]["seconds"]["ALARME"] == 70
+    assert sum(item["seconds"]["ALARME"] for item in buckets) == 0
+    assert sum(item["seconds"]["EMERGENCIA"] for item in buckets) == 100
+    assert buckets[-2]["seconds"]["EMERGENCIA"] == 20
+    assert buckets[-1]["seconds"]["EMERGENCIA"] == 80
     # Repeated timestamp: latest ingestion takes precedence without double counting.
     tied = calculate_utilization([sample(20), sample(20, alarme=True)], now)
     assert tied["buckets"][-1]["seconds"]["OPERANDO"] == 0
-    assert tied["buckets"][-1]["seconds"]["ALARME"] == 20
+    assert tied["buckets"][-1]["seconds"]["EMERGENCIA"] == 20
     before_window = calculate_utilization([sample(86430)], now, timeout=90)
     assert before_window["buckets"][0]["seconds"]["OPERANDO"] == 60
     assert sum(item["samples"] for item in before_window["buckets"]) == 0
@@ -146,7 +146,7 @@ def test_cnc_payload_preserves_unknown_voltage_and_all_signals(api_client):
     assert saved.voltage_24v is None
     assert saved.analog_signals == {}
     snapshot = status(client, registration)
-    assert snapshot["status"] == "OPERANDO"
+    assert snapshot["status"] == "EMERGENCIA"
     assert snapshot["extra_signals"]["entradas_brutas"] == payload["extra_signals"]["entradas_brutas"]
     assert snapshot["digital_signals"]["motor_ligado"] is True
     assert snapshot["digital_signals"]["emergencia"] is False
@@ -154,7 +154,7 @@ def test_cnc_payload_preserves_unknown_voltage_and_all_signals(api_client):
     assert history["items"][0]["digital_signals"] == payload["digital_signals"]
 
 
-@pytest.mark.parametrize("cycle,fault,expected", [(False, False, "PARADA"), (True, False, "OPERANDO"), (False, True, "ALARME")])
+@pytest.mark.parametrize("cycle,fault,expected", [(False, False, "PARADA"), (True, False, "OPERANDO"), (False, True, "EMERGENCIA")])
 def test_cnc_without_supply_sensor(api_client, cycle, fault, expected):
     client, _ = api_client
     registration = register(client)
@@ -166,7 +166,7 @@ def test_cnc_without_supply_sensor(api_client, cycle, fault, expected):
 @pytest.mark.parametrize("payload,expected", [
     ({"voltage_24v": False, "digital_signals": {"emergencia": True}}, "DESLIGADA"),
     ({"digital_signals": {"emergency": True, "alarm": True}}, "EMERGENCIA"),
-    ({"digital_signals": {"alarme": True}}, "ALARME"),
+    ({"digital_signals": {"alarme": True}}, "EMERGENCIA"),
     ({"digital_signals": {"maintenance": True}}, "MANUTENCAO"),
     ({"machine_active": False}, "PARADA"),
     ({"digital_signals": {"alarm": "false"}}, "OPERANDO"),

@@ -95,6 +95,6 @@ test("older diagnostics remain visible and historical outputs come from the hist
     current,
   );
   assert.equal(event.signalOutputs[0].code, "THEN");
-  assert.equal(event.status, "PARADA");
+  assert.equal(event.status, "EMERGENCIA");
   assert.deepEqual(signalOutputsFor({}), []);
 });

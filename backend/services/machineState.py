@@ -1,5 +1,7 @@
 """Interpret observed machine states independently of their producer."""
 
+IHM_SIGNALS = ("ativo", "inativo", "emergencia", "motor_ligado", "alarme", "porta_aberta")
+
 
 def machine_active_from_states(states, fallback=False) -> bool:
     """Explicit activity signals take precedence; never infer a missing complement."""
@@ -36,10 +38,10 @@ def derive_status(data) -> str:
     digital = {str(key).lower(): value for key, value in (data.digital_signals or {}).items()}
     if data.voltage_24v is False:
         return "DESLIGADA"
-    if digital.get("emergencia") or digital.get("emergency"):
+    if any(digital.get(key) is True for key in (*IHM_SIGNALS, "emergency", "alarm")):
         return "EMERGENCIA"
-    if digital.get("alarme") or digital.get("alarm"):
-        return "ALARME"
+    if all(digital.get(key) is False for key in IHM_SIGNALS):
+        return "OPERANDO"
     if digital.get("manutencao") or digital.get("maintenance"):
         return "MANUTENCAO"
     if machine_active_from_states(digital, data.machine_active):

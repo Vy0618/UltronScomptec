@@ -1,21 +1,29 @@
 """Human-readable outputs from a single observation; raw inputs stay unchanged."""
 from math import isfinite
 
-from services.machineState import derive_diagnostics, machine_active_from_states
+from services.machineState import IHM_SIGNALS, derive_diagnostics, machine_active_from_states
 
-SIGNALS = ("ativo", "inativo", "emergencia", "motor_ligado", "alarme", "porta_aberta")
+SIGNALS = IHM_SIGNALS
 LABELS = ("ativo", "inativo", "emergência", "motor ligado", "alarme / erro", "porta aberta")
+FAULT_LABELS = {
+    "ativo": "Falha na execução",
+    "inativo": "Falha na parada",
+    "emergencia": "Falha na emergência",
+    "motor_ligado": "Falha no motor",
+    "alarme": "Falha no alarme / erro",
+    "porta_aberta": "Falha na porta",
+}
 LEVEL_ORDER = {"critical": 0, "attention": 1, "info": 2}
 
 PAIRS = (
-    ("EMERGENCIA_COM_ALARME", ("emergencia", "alarme"), "critical", "Emergência e alarme simultâneos", "Os dois sinais estão acionados. Emergência tem prioridade sobre alarme."),
-    ("EMERGENCIA_COM_ATIVIDADE", ("emergencia", "ativo"), "critical", "Emergência com atividade informada", "Ativo e emergência foram recebidos juntos. Emergência tem prioridade sobre atividade."),
-    ("ALARME_COM_ATIVIDADE", ("alarme", "ativo"), "attention", "Atividade com alarme", "Ativo e alarme estão acionados. Alarme tem prioridade sobre atividade."),
-    ("ALARME_COM_INATIVIDADE", ("alarme", "inativo"), "attention", "Inatividade com alarme", "Inativo e alarme estão acionados. Alarme tem prioridade sobre parada."),
-    ("PORTA_ABERTA_COM_ALARME", ("porta_aberta", "alarme"), "attention", "Porta aberta com alarme", "Porta aberta e alarme foram recebidos juntos. Essa combinação isolada não confirma operação falha."),
-    ("ATIVIDADE_COM_PORTA_ABERTA", ("ativo", "porta_aberta"), "attention", "Atividade com porta aberta", "Os sinais ativo e porta aberta estão acionados. Verifique o contexto operacional; essa combinação não altera o estado resumido."),
-    ("INATIVIDADE_COM_PORTA_ABERTA", ("inativo", "porta_aberta"), "info", "Inatividade com porta aberta", "Inativo e porta aberta estão acionados. A combinação isolada não indica falha."),
-    ("ATIVIDADE_COM_MOTOR", ("ativo", "motor_ligado"), "info", "Atividade com motor ligado", "Ativo e motor ligado estão acionados. Emergência, alarme e inativo continuam respeitando sua prioridade."),
+    ("EMERGENCIA_COM_ALARME", ("emergencia", "alarme"), "critical", "Emergência e alarme simultâneos", "Os dois sinais estão em 1 e indicam emergência."),
+    ("EMERGENCIA_COM_ATIVIDADE", ("emergencia", "ativo"), "critical", "Emergência com atividade informada", "Ativo e emergência foram recebidos juntos em 1 e indicam emergência."),
+    ("ALARME_COM_ATIVIDADE", ("alarme", "ativo"), "attention", "Atividade com alarme", "Ativo e alarme estão em 1 e indicam emergência."),
+    ("ALARME_COM_INATIVIDADE", ("alarme", "inativo"), "attention", "Inatividade com alarme", "Inativo e alarme estão em 1 e indicam emergência."),
+    ("PORTA_ABERTA_COM_ALARME", ("porta_aberta", "alarme"), "attention", "Porta aberta com alarme", "Porta aberta e alarme foram recebidos juntos em 1 e indicam emergência."),
+    ("ATIVIDADE_COM_PORTA_ABERTA", ("ativo", "porta_aberta"), "attention", "Atividade com porta aberta", "Os sinais ativo e porta aberta estão em 1 e indicam emergência."),
+    ("INATIVIDADE_COM_PORTA_ABERTA", ("inativo", "porta_aberta"), "info", "Inatividade com porta aberta", "Inativo e porta aberta estão em 1 e indicam emergência."),
+    ("ATIVIDADE_COM_MOTOR", ("ativo", "motor_ligado"), "info", "Atividade com motor ligado", "Ativo e motor ligado estão em 1 e indicam emergência."),
     ("INATIVIDADE_COM_MOTOR", ("inativo", "motor_ligado"), "info", "Inatividade com motor ligado", "Inativo e motor ligado estão acionados. Motor ligado isoladamente não confirma execução."),
 )
 
@@ -49,14 +57,14 @@ def derive_signal_outputs(data) -> list[dict]:
         ("ativo", "ATIVIDADE_INFORMADA", "info", "Atividade informada", "O sinal ativo está acionado; os demais sinais recebidos continuam preservados."),
         ("inativo", "INATIVIDADE_INFORMADA", "info", "Inatividade informada", "O sinal inativo está acionado. Inatividade não significa máquina desligada."),
         ("motor_ligado", "MOTOR_SEM_ATIVIDADE_CONFIRMADA", "info", "Motor ligado sem atividade confirmada", "Motor ligado isoladamente não comprova atividade da máquina."),
-        ("porta_aberta", "PORTA_ABERTA", "info", "Porta aberta", "O sinal de porta aberta está acionado, sem diagnóstico específico de falha por esse sinal isolado."),
+        ("porta_aberta", "PORTA_ABERTA", "info", "Porta aberta", "O sinal de porta aberta está acionado e indica emergência pela regra dos parâmetros da IHM."),
     )
     for signal, code, level, title, message in singles:
         if digital.get(signal) is True and not any(signal in output["signals"] for output in outputs):
             add(code, level, title, message, (signal,))
 
     if all(digital.get(signal) is False for signal in SIGNALS):
-        add("SEM_SINAIS_ACIONADOS", "info", "Nenhum sinal acionado", "Os seis sinais foram recebidos desacionados. A classificação padrão é parada; não há sinal de inatividade acionado.", SIGNALS)
+        add("SEM_SINAIS_ACIONADOS", "info", "Máquina operando: parâmetros da IHM em 0", "Os seis parâmetros da IHM foram recebidos em 0. A máquina está operando.", SIGNALS)
     missing = [label for signal, label in zip(SIGNALS, LABELS) if not isinstance(digital.get(signal), bool)]
     if missing:
         add("SINAIS_NAO_INFORMADOS", "info", "Leitura parcial dos sinais", "Não informados: " + ", ".join(missing) + ". Ausência não significa sinal desacionado.",
@@ -79,4 +87,14 @@ def derive_signal_outputs(data) -> list[dict]:
         else:
             code, title, condition = "CORRENTE_RECEBIDA", "Corrente recebida", "O valor isolado não comprova atividade da máquina."
         add(code, "info", title, f"Corrente {current:g} A ({origin}). {condition}", ("current",))
+    asserted = [signal for signal in SIGNALS if digital.get(signal) is True]
+    if asserted:
+        labels = dict(zip(SIGNALS, LABELS))
+        parameters = ", ".join(f"{labels[signal]} ({signal})" for signal in asserted)
+        outputs.insert(0, {
+            "code": "PARAMETROS_IHM_ACIONADOS", "level": "critical",
+            "title": "; ".join(FAULT_LABELS[signal] for signal in asserted),
+            "message": f"Parâmetros da IHM em 1: {parameters}. Qualquer parâmetro em 1 indica emergência.",
+            "signals": asserted,
+        })
     return sorted(outputs, key=lambda output: LEVEL_ORDER[output["level"]])

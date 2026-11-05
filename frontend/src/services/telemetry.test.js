@@ -103,14 +103,14 @@ test("CNC sample does not invent power-off when 24 V is unmeasured", () => {
     ),
     timestamp: "2026-10-21T12:00:00Z",
   };
-  assert.equal(readingStatus(sample), "OPERANDO");
+  assert.equal(readingStatus(sample), "EMERGENCIA");
   assert.equal(
     readingStatus({
       ...sample,
       machine_active: false,
       digital_signals: { alarme: true },
     }),
-    "ALARME",
+    "EMERGENCIA",
   );
   assert.equal(readingStatus({ machine_active: false }), "PARADA");
   assert.equal(sample.extra_signals.entradas_brutas.I3, false);

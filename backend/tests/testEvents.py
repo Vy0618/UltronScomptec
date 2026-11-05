@@ -126,10 +126,10 @@ def test_default_arduino_id_one_resolves_to_first_machine(event_api):
 
 
 @pytest.mark.parametrize(('state', 'expected'), [
-    ('ativo', 'OPERANDO'), ('inativo', 'PARADA'), ('porta_aberta', 'PARADA'),
+    ('ativo', 'EMERGENCIA'), ('inativo', 'EMERGENCIA'), ('porta_aberta', 'EMERGENCIA'),
     ('em_execucao', 'OPERANDO'), ('pausa', 'PARADA'), ('parada', 'PARADA'),
-    ('emergencia', 'EMERGENCIA'), ('motor_ligado', 'PARADA'), ('automatico', 'PARADA'),
-    ('manual', 'PARADA'), ('alarme', 'ALARME'),
+    ('emergencia', 'EMERGENCIA'), ('motor_ligado', 'EMERGENCIA'), ('automatico', 'PARADA'),
+    ('manual', 'PARADA'), ('alarme', 'EMERGENCIA'),
 ])
 def test_each_observed_state_is_preserved_without_pin_mapping(event_api, state, expected):
     client, _, machine, _ = event_api
@@ -149,17 +149,45 @@ def test_new_snapshot_does_not_invent_or_merge_missing_states(event_api):
     assert status['states'] == {'porta_aberta': False}
 
 
+def test_ihm_emergency_identifies_parameters_and_clears_when_all_return_to_zero(event_api):
+    from services.machineState import IHM_SIGNALS
+    client, _, machine, current = event_api
+    normal = dict.fromkeys(IHM_SIGNALS, False)
+    snapshots = [normal, *({**normal, signal: True} for signal in IHM_SIGNALS),
+                 {**normal, 'motor_ligado': True, 'porta_aberta': True}, normal]
+    for states in snapshots:
+        current[0] += timedelta(seconds=1)
+        response = send(client, machine, states)
+        assert response.status_code == 201
+        assert response.json()['states'] == states
+        status = client.get(f"/api/cncs/{machine['id']}/status").json()
+        asserted = [signal for signal in IHM_SIGNALS if states[signal]]
+        assert status['status'] == ('EMERGENCIA' if asserted else 'OPERANDO')
+        assert status['states'] == states
+        outputs = status['signal_outputs']
+        if asserted:
+            assert outputs[0]['code'] == 'PARAMETROS_IHM_ACIONADOS'
+            assert outputs[0]['signals'] == asserted
+            assert all(f'({signal})' in outputs[0]['message'] for signal in asserted)
+        else:
+            assert not any(item['code'] == 'PARAMETROS_IHM_ACIONADOS' for item in outputs)
+        assert client.get('/api/cncs/statuses').json()[0]['signal_outputs'] == outputs
+        history = client.get(f"/api/cncs/{machine['id']}/history").json()['items']
+        assert history[0]['signal_outputs'] == outputs
+        assert history[0]['states'] == states
+
+
 @pytest.mark.parametrize(('states', 'expected_status', 'expected_active', 'codes'), [
-    ({'ativo': True, 'inativo': False}, 'OPERANDO', True, []),
-    ({'ativo': False, 'inativo': True}, 'PARADA', False, []),
+    ({'ativo': True, 'inativo': False}, 'EMERGENCIA', True, []),
+    ({'ativo': False, 'inativo': True}, 'EMERGENCIA', False, []),
     ({'ativo': False, 'em_execucao': True}, 'PARADA', False, []),
-    ({'ativo': True, 'inativo': True}, 'PARADA', False, ['ATIVIDADE_CONFLITANTE']),
-    ({'ativo': True, 'alarme': True}, 'ALARME', True, []),
+    ({'ativo': True, 'inativo': True}, 'EMERGENCIA', False, ['ATIVIDADE_CONFLITANTE']),
+    ({'ativo': True, 'alarme': True}, 'EMERGENCIA', True, []),
     ({'porta_aberta': True, 'emergencia': True}, 'EMERGENCIA', False, ['PORTA_ABERTA_EMERGENCIA']),
     ({'porta_aberta': False, 'emergencia': True}, 'EMERGENCIA', False, []),
     ({'emergencia': True}, 'EMERGENCIA', False, []),
-    ({'porta_aberta': True}, 'PARADA', False, []),
-    ({'motor_ligado': True}, 'PARADA', False, []),
+    ({'porta_aberta': True}, 'EMERGENCIA', False, []),
+    ({'motor_ligado': True}, 'EMERGENCIA', False, []),
 ])
 def test_activity_and_combined_diagnostics_preserve_the_observed_snapshot(event_api, states, expected_status, expected_active, codes):
     client, _, machine, _ = event_api
@@ -224,7 +252,7 @@ def test_signal_outputs_reach_current_and_historical_queries_and_clear_with_new_
     client, _, machine, current = event_api
     first = send(client, machine, {'ativo': True, 'porta_aberta': True})
     status = client.get(f"/api/cncs/{machine['id']}/status").json()
-    assert status['status'] == 'OPERANDO' and status['diagnostics'] == []
+    assert status['status'] == 'EMERGENCIA' and status['diagnostics'] == []
     assert 'ATIVIDADE_COM_PORTA_ABERTA' in {item['code'] for item in status['signal_outputs']}
     assert client.get('/api/cncs/statuses').json()[0]['signal_outputs'] == status['signal_outputs']
     expected = status['signal_outputs']
@@ -265,7 +293,7 @@ def test_same_second_events_follow_arrival_order_and_historical_delivery_does_no
         latest = client.get(f"/api/cncs/{machine['id']}/history?limit=1").json()['items'][0]
         assert latest['id'] == result.json()['id']
     send(client, machine, {'alarme': False}, timestamp=(current[0] - timedelta(hours=2)).isoformat() + 'Z')
-    assert client.get(f"/api/cncs/{machine['id']}/status").json()['status'] == 'ALARME'
+    assert client.get(f"/api/cncs/{machine['id']}/status").json()['status'] == 'EMERGENCIA'
 
 
 def test_stale_collection_and_offline_recover_without_a_collector(event_api):
@@ -309,7 +337,7 @@ def test_removing_collector_preserves_machine_history_and_machine_keeps_receivin
     assert client.delete(f"/api/devices/{device['id']}").status_code == 204
     assert send(client, machine, {'alarme': True}).status_code == 201
     assert client.get(f"/api/cncs/{machine['id']}/history").json()['total'] == 2
-    assert client.get(f"/api/cncs/{machine['id']}/status").json()['status'] == 'ALARME'
+    assert client.get(f"/api/cncs/{machine['id']}/status").json()['status'] == 'EMERGENCIA'
     assert client.delete(f"/api/cncs/{machine['id']}").status_code == 204
     assert client.get('/api/cncs').json() == []
 

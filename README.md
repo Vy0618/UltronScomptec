@@ -77,12 +77,12 @@ O perfil atual da aplicação acompanha seis sinais booleanos independentes:
 | `alarme` | Alarme / erro |
 | `porta_aberta` | Porta aberta |
 
-`ativo=true` leva a `OPERANDO`; `inativo=true` leva a `PARADA`, sem significar máquina desligada. Emergência e alarme mantêm prioridade sobre atividade. `ativo=false` explícito prevalece sobre o indicador de execução legado. Não inferimos `inativo=true` a partir de `ativo=false`, nem o inverso. Um sinal ausente continua **não informado**.
+Com os seis parâmetros da IHM em `false` (0), o status é `OPERANDO`. Qualquer um desses parâmetros em `true` (1) leva a `EMERGENCIA`, inclusive `ativo`, `inativo`, `motor_ligado` e `porta_aberta`. A interpretação prioritária em `signal_outputs` identifica todos os parâmetros em 1 pelo nome e pela chave. Quando todos voltam a 0, a emergência é encerrada. Os valores recebidos são preservados; um sinal ausente continua **não informado** e uma leitura incompleta não confirma que todos estão em 0. Os tratamentos de comunicação, tensão dedicada e atividade no formato legado continuam disponíveis.
 
 As consultas de status individual e coletivo também retornam `diagnostics`, calculados a partir da mesma leitura:
 
 - `porta_aberta=true` + `emergencia=true`: **Operação falha**, mantendo o estado `EMERGENCIA`.
-- `ativo=true` + `inativo=true`: **Sinais de atividade conflitantes**, com estado `PARADA` enquanto não houver emergência ou alarme.
+- `ativo=true` + `inativo=true`: **Sinais de atividade conflitantes**, com estado `EMERGENCIA` pela regra dos parâmetros da IHM.
 
 Os diagnósticos aparecem nos detalhes, cartões e alertas. Uma nova combinação gera notificação mesmo quando o estado resumido continua igual. Em perda de comunicação, o último diagnóstico é identificado como antigo; os valores recebidos são preservados. A primeira carga não cria notificações de mudança.
 
@@ -90,7 +90,7 @@ Os diagnósticos aparecem nos detalhes, cartões e alertas. Uma nova combinaçã
 
 O painel **Interações entre sinais** mostra saídas calculadas pela API em `signal_outputs`, com código, nível, título, mensagem e sinais envolvidos. Há filtros por máquina e por nível (**Informativo**, **Atenção**, **Crítico**), com seis máquinas por página e duas interpretações resumidas por cartão. Os detalhes mostram todas as saídas; cartões, alertas, histórico e modo TV também exibem interpretações.
 
-As combinações da [tabela do relatório](docs/reports/sinaisOperacionaisCorrente.md#resultado-das-interações-entre-sinais) geram saídas, inclusive condições sem falha, corrente simulada e leitura parcial. Mais de uma regra pode corresponder à mesma leitura. As saídas não modificam o estado operacional nem os sinais recebidos e não acionam relés. As consultas de status e histórico usam a mesma interpretação; o histórico é calculado a partir de cada leitura armazenada, sem copiar o estado atual.
+As combinações da [tabela do relatório](docs/reports/sinaisOperacionaisCorrente.md#resultado-das-interações-entre-sinais) continuam gerando saídas, assim como corrente simulada e leitura parcial. A classificação operacional segue a regra atual da IHM descrita acima; o relatório registra as interpretações anteriores. Mais de uma regra pode corresponder à mesma leitura. As saídas não modificam os sinais recebidos e não acionam relés. As consultas de status e histórico usam a mesma interpretação; o histórico é calculado a partir de cada leitura armazenada, sem copiar o estado atual.
 
 Uma alteração de sinais atualiza o painel mesmo sem mudança de status. As notificações existentes continuam ligadas a mudanças de estado e aos dois diagnósticos específicos; interpretações informativas não geram notificações a cada atualização. Em perda de comunicação, os últimos resultados são identificados como antigos.
 
@@ -308,13 +308,13 @@ Escolha um exemplo da tabela. No PowerShell, substitua `enviar_sinais` por `Envi
 
 | Objetivo | Comando Bash | Resultado esperado |
 |---|---|---|
-| Atividade com motor ligado | `enviar_sinais --state ativo --also motor_ligado` | `OPERANDO`; “Atividade com motor ligado”. |
-| Máquina inativa | `enviar_sinais --state inativo` | `PARADA`; “Inatividade informada”. |
-| Alarme durante atividade | `enviar_sinais --state ativo --also alarme` | `ALARME`; “Atividade com alarme”. |
+| Atividade com motor ligado | `enviar_sinais --state ativo --also motor_ligado` | `EMERGENCIA`; identifica `ativo` e `motor_ligado`. |
+| Máquina inativa | `enviar_sinais --state inativo` | `EMERGENCIA`; identifica `inativo`. |
+| Alarme durante atividade | `enviar_sinais --state ativo --also alarme` | `EMERGENCIA`; identifica `ativo` e `alarme`. |
 | Emergência | `enviar_sinais --state emergencia` | `EMERGENCIA`; “Emergência acionada”. |
 | Operação falha | `enviar_sinais --state porta_aberta --also emergencia` | `EMERGENCIA`; diagnóstico “Operação falha”. |
-| Atividade conflitante | `enviar_sinais --state ativo --also inativo` | `PARADA`; diagnóstico “Sinais de atividade conflitantes”. |
-| Atividade com porta aberta | `enviar_sinais --state ativo --also porta_aberta` | `OPERANDO`; interpretação de atenção, sem inventar uma falha. |
+| Atividade conflitante | `enviar_sinais --state ativo --also inativo` | `EMERGENCIA`; diagnóstico “Sinais de atividade conflitantes”. |
+| Atividade com porta aberta | `enviar_sinais --state ativo --also porta_aberta` | `EMERGENCIA`; identifica `ativo` e `porta_aberta`. |
 | Corrente simulada | `enviar_sinais --state ativo --current 12.5` | `12.5 A`, identificada como simulada. |
 | Corrente zero | `enviar_sinais --state inativo --current 0` | `0 A` é um valor válido, diferente de não informado. |
 | Voltar a não informar corrente | `enviar_sinais --state ativo` | A próxima leitura omite corrente; o valor anterior não é reutilizado. |

@@ -1,4 +1,4 @@
-import { machineActiveFromStates } from "./cncSignals.js";
+import { CNC_SIGNALS, machineActiveFromStates } from "./cncSignals.js";
 
 // Pure transformations shared by monitoring and its regression tests.
 export function readAnalog(signals, ...keys) {
@@ -56,8 +56,12 @@ export function readingStatus(reading) {
     ),
   );
   if (reading.voltage_24v === false) return "DESLIGADA";
-  if (digital.emergencia || digital.emergency) return "EMERGENCIA";
-  if (digital.alarme || digital.alarm) return "ALARME";
+  if (
+    [...CNC_SIGNALS.map(({ key }) => key), "emergency", "alarm"].some(
+      (key) => digital[key] === true,
+    )
+  ) return "EMERGENCIA";
+  if (CNC_SIGNALS.every(({ key }) => digital[key] === false)) return "OPERANDO";
   if (digital.manutencao || digital.maintenance) return "MANUTENCAO";
   if (machineActiveFromStates(digital, reading.machine_active))
     return "OPERANDO";
