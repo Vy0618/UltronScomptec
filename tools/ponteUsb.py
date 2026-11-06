@@ -138,14 +138,34 @@ class StdoutEvents:
 
 class Gateway:
     """Adapta a aquisição para eventos de máquina; cadastro por MAC é compatibilidade."""
-    def __init__(self, api, mac=None, device_id=None, machine_id=None, *, simulated_current=None):
+    def __init__(self, api, mac=None, device_id=None, machine_id=None, *, simulated_current=None, current_file=None):
         self.api, self.mac, self.device_id = api, mac, device_id
         self.machine_id = machine_id
         self.simulated_current = None if simulated_current is None else current_in_amps(simulated_current)
+        self.current_file = Path(current_file) if current_file is not None else None
+        self.current_file_error = None
         self.use_frame_machine = not (machine_id or mac or device_id)
         self.session = str(uuid4())
         self.previous = None
         self.previous_payload = None
+
+    def current_value(self):
+        if self.current_file is not None:
+            try:
+                amps = current_in_amps(self.current_file.read_text(encoding='utf-8-sig').strip())
+            except (OSError, UnicodeError, ValueError) as error:
+                message = str(error)
+                if message != self.current_file_error:
+                    print(f'Arquivo de corrente indisponível ou inválido: {self.current_file}. '
+                          'Mantendo a última corrente válida; sem valor anterior, corrente não informada.',
+                          file=sys.stderr, flush=True)
+                self.current_file_error = message
+            else:
+                if amps != self.simulated_current:
+                    print(f'Corrente simulada atualizada: {amps:g} A.', file=sys.stderr, flush=True)
+                self.simulated_current = amps
+                self.current_file_error = None
+        return self.simulated_current
 
     def payload_for(self, reading):
         current = (reading.sequence, reading.uptime_ms)
@@ -161,11 +181,12 @@ class Gateway:
         analog = data.get('analog_signals', {})
         current_input = data['extra_signals'].get('current_input', {})
         physical_current_enabled = isinstance(current_input, dict) and current_input.get('physical_enabled') is True
-        if (self.simulated_current is not None and not physical_current_enabled
+        simulated_current = self.current_value()
+        if (simulated_current is not None and not physical_current_enabled
                 and not any(key in analog for key in ('current', 'corrente'))):
             # Enrich this same reading. Never replace the real digital snapshot,
             # a received current (including zero), or a physical sensor reading.
-            data.setdefault('analog_signals', {})['current'] = self.simulated_current
+            data.setdefault('analog_signals', {})['current'] = simulated_current
             data['extra_signals']['current_input'] = {
                 'input': 'I8', 'unit': 'A', 'source': 'simulated', 'physical_enabled': False,
             }
@@ -270,6 +291,8 @@ def main():
                         help=f'Acrescenta corrente virtual fixa de {DEFAULT_SIMULATED_CURRENT:g} A quando nao ha medicao; preserva os sinais do Opta')
     parser.add_argument('--corrente', type=current_in_amps, metavar='AMPERES',
                         help='Define a corrente virtual fixa em A e ativa a simulacao; aceita zero (ex.: --corrente 18.2)')
+    parser.add_argument('--arquivo-corrente', type=Path, metavar='CAMINHO',
+                        help='Lê a corrente simulada deste arquivo a cada nova leitura USB; permite trocar o valor sem reiniciar')
     identity = parser.add_mutually_exclusive_group()
     identity.add_argument('--machine-id', help='Substitui o ID enviado no firmware; omitido usa o ID serial (padrão 1)')
     identity.add_argument('--mac', help='MAC real do Opta usado no cadastro existente')
@@ -297,10 +320,19 @@ def main():
     api = StdoutEvents() if args.stdout else HttpApi(args.api, os.getenv('INGEST_API_KEY') or os.getenv('DEVICE_API_KEY', ''))
     simulated_current = (args.corrente if args.corrente is not None else
                          DEFAULT_SIMULATED_CURRENT if args.simular_corrente else None)
-    gateway = Gateway(api, args.mac, args.device_id, args.machine_id, simulated_current=simulated_current)
+    if args.arquivo_corrente is not None:
+        try:
+            args.arquivo_corrente.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            parser.error(f'Não foi possível preparar o arquivo de corrente: {error}')
+    gateway = Gateway(api, args.mac, args.device_id, args.machine_id,
+                      simulated_current=simulated_current, current_file=args.arquivo_corrente)
     if simulated_current is not None:
         print(f'Corrente virtual fixa: {simulated_current:g} A; usada somente sem corrente recebida. '
               'Origem simulada, sem leitura fisica de I8.', file=sys.stderr, flush=True)
+    if args.arquivo_corrente is not None:
+        print(f'Corrente simulada por arquivo: {args.arquivo_corrente.resolve()}. '
+              'Grave somente o valor em A; aplicado na próxima leitura USB.', file=sys.stderr, flush=True)
     worker = threading.Thread(target=sender, args=(gateway, pending, stop), daemon=True)
     worker.start()
     try:

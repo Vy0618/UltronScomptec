@@ -87,6 +87,24 @@ def test_utilization_handles_timeout_boundaries_and_priority():
     assert sum(sum(item["seconds"].values()) for item in calculate_utilization([], now)["buckets"]) == 0
 
 
+def test_utilization_exposes_historical_failure_causes_without_changing_raw_signals(api_client):
+    client, _ = api_client
+    registration = register(client)
+    now = utcnow()
+    for seconds, states in [(3, {"inativo": True}), (2, {"inativo": True}),
+                            (1, {"inativo": True, "porta_aberta": True})]:
+        response = post(client, registration, digital_signals=states,
+                        timestamp=(now - timedelta(seconds=seconds)).isoformat() + "Z")
+        assert response.status_code == 201
+        assert response.json()['digital_signals'] == states
+    response = client.get(f"/api/cncs/{registration['cnc']['id']}/utilization")
+    assert response.status_code == 200
+    buckets = response.json()['buckets']
+    assert sum(bucket['failure_causes']['inativo'] for bucket in buckets) == 1
+    assert sum(bucket['failure_causes']['porta_aberta'] for bucket in buckets) == 1
+    assert sum(bucket['failure_causes']['ativo'] for bucket in buckets) == 0
+
+
 def post(client, registration, **changes):
     return client.post(f"/api/devices/{registration['device']['id']}/telemetry", json={"machine_active": True, "voltage_24v": True, **changes})
 

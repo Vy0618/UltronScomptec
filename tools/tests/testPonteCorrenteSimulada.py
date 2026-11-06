@@ -1,4 +1,4 @@
-"""Optional fixed current must never replace the real IHM digital snapshot."""
+"""Optional simulated current must never replace the real IHM digital snapshot."""
 import copy
 from dataclasses import replace
 import json
@@ -77,6 +77,52 @@ def test_retry_keeps_original_current_event_and_timestamp():
     assert next_event['event_id'] != first['event_id']
 
 
+def test_file_changes_current_on_new_readings_and_preserves_retries_and_ihm_states(tmp_path):
+    path = tmp_path / 'corrente.txt'
+    path.write_text('12.5\n', encoding='utf-8-sig')
+    reading = sample()
+    original = copy.deepcopy(reading.payload)
+    gateway = Gateway(None, current_file=path)
+    first = gateway.payload_for(reading)
+    assert first['analog_signals'] == {'current': 12.5}
+    path.write_text('0\n', encoding='ascii')
+    assert gateway.payload_for(reading) == first
+    second = gateway.payload_for(replace(reading, sequence=2, uptime_ms=2000))
+    assert second['analog_signals'] == {'current': 0}
+    assert second['states'] == first['states'] == original['digital_signals']
+    assert second['extra_signals']['current_input']['source'] == 'simulated'
+    assert second['event_id'] != first['event_id']
+    assert reading.payload == original
+
+
+def test_current_file_can_appear_after_start_and_invalid_updates_keep_last_valid_value(tmp_path):
+    path = tmp_path / 'corrente.txt'
+    gateway = Gateway(None, current_file=path)
+    reading = sample()
+    assert gateway.payload_for(reading).get('analog_signals', {}) == {}
+    path.write_text('18.2', encoding='ascii')
+    for sequence, content in enumerate(('18.2', '', '-1', 'nan', 'inf', 'texto', '12,5'), 2):
+        path.write_text(content, encoding='ascii')
+        event = gateway.payload_for(replace(reading, sequence=sequence, uptime_ms=sequence * 1000))
+        assert event['analog_signals'] == {'current': 18.2}
+    path.unlink()
+    assert gateway.current_value() == 18.2
+    path.write_text('3.5', encoding='ascii')
+    assert gateway.current_value() == 3.5
+
+
+@pytest.mark.parametrize('physical', [False, True])
+def test_current_file_preserves_received_current_and_physical_sensor_priority(tmp_path, physical):
+    path = tmp_path / 'corrente.txt'
+    path.write_text('24', encoding='ascii')
+    reading = sample()
+    reading.payload['analog_signals'] = {} if physical else {'current': 0}
+    reading.payload['extra_signals']['current_input']['physical_enabled'] = physical
+    event = Gateway(None, current_file=path).payload_for(reading)
+    assert event.get('analog_signals', {}) == reading.payload['analog_signals']
+    assert event['extra_signals']['current_input'] == reading.payload['extra_signals']['current_input']
+
+
 @pytest.mark.parametrize('amps', [-1, float('nan'), float('inf'), True, None, 'bad'])
 def test_gateway_rejects_invalid_configured_current_but_none_disables_it(amps):
     if amps is None:
@@ -109,6 +155,27 @@ def test_cli_selects_default_custom_or_disabled_virtual_current_without_opening_
     with pytest.raises(Configured):
         ponteUsb.main()
     assert captured['simulated_current'] == expected
+
+
+def test_cli_accepts_current_file_without_opening_serial(monkeypatch, tmp_path):
+    import ponteUsb
+    path = tmp_path / '.local' / 'corrente.txt'
+    captured = {}
+
+    class Configured(Exception):
+        pass
+
+    def gateway(*args, **kwargs):
+        captured.update(kwargs)
+        raise Configured
+
+    monkeypatch.setattr('dotenv.load_dotenv', lambda *args, **kwargs: None)
+    monkeypatch.setattr(ponteUsb, 'Gateway', gateway)
+    monkeypatch.setattr(sys, 'argv', ['ponteUsb.py', '--porta', 'TEST', '--arquivo-corrente', str(path)])
+    with pytest.raises(Configured):
+        ponteUsb.main()
+    assert captured['current_file'] == path
+    assert path.parent.is_dir()
 
 
 @pytest.mark.parametrize('value', ['-1', 'nan', 'inf', '-inf', 'invalid'])

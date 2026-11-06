@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, ArrowRight, Clock3, ShieldCheck } from "lucide
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { summarizeUtilization } from "../../services/utilization";
 import { usePreferences } from "../../services/preferences";
+import FailureCausesChart from "./failureCausesChart";
 
 const percent = value => value == null ? "—" : `${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 const relativeTime = hours => hours === 0 ? "Agora" : `Há ${hours} h`;
@@ -22,12 +23,11 @@ function AlertTooltip({ active, payload }) {
   </div>;
 }
 
-export default function UtilizationChart({ machines, data, loading, error }) {
+export default function UtilizationChart({ machines, data, loading, error, showFailureCauses = false, demoMode = false }) {
   const light = usePreferences().theme === "light";
   const [hours, setHours] = useState(24);
   const gradient = useId().replaceAll(":", "");
   const result = useMemo(() => summarizeUtilization(machines, hours, data), [machines, hours, data]);
-  const chartData = useMemo(() => [...result.data].reverse(), [result.data]);
   const hasAlerts = result.alertRate > 0;
   const lineColor = hasAlerts ? (light ? "#985118" : "#FBBF24") : (light ? "#0c7352" : "#34D399");
   const statusLabel = result.observed === 0 ? "Sem histórico" : hasAlerts ? "Alertas no período" : "Sem alertas no período";
@@ -56,18 +56,18 @@ export default function UtilizationChart({ machines, data, loading, error }) {
     <div className="rounded-xl border border-base-border/70 bg-base-bg/30 px-2 pb-2 pt-4 sm:px-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-2 text-[10px] text-text-muted">
         <span>ALARMES + EMERGÊNCIAS · % DO TEMPO MONITORADO</span>
-        <span className="inline-flex items-center gap-1">Mais recente <ArrowRight size={12} /> Mais antigo</span>
+        <span className="inline-flex items-center gap-1">Mais antigo <ArrowRight size={12} /> Mais recente</span>
       </div>
       {result.observed === 0 ? <div role="status" className="flex h-[260px] flex-col items-center justify-center gap-3 px-6 text-center text-sm text-text-muted">
         <Activity size={28} className="text-text-dim" />
         <p>{loading ? "Carregando histórico…" : result.samples ? "Leitura recebida. Aguarde a próxima atualização." : "Aguardando leituras no período selecionado."}</p>
         <p className="text-xs">Os alertas aparecerão aqui conforme a telemetria for recebida.</p>
-      </div> : <div role="img" aria-label={`Alertas nas últimas ${hours} horas: ${percent(result.alertRate)} do tempo monitorado. Agora à esquerda; passado à direita. Zero significa sem alarmes ou emergências.`} className="h-[260px] w-full min-w-0 sm:h-[290px]">
+      </div> : <div role="img" aria-label={`Alertas nas últimas ${hours} horas: ${percent(result.alertRate)} do tempo monitorado. Passado à esquerda; agora à direita. Zero significa sem alarmes ou emergências.`} className="h-[260px] w-full min-w-0 sm:h-[290px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 10, right: 22, left: 0, bottom: 8 }} accessibilityLayer>
+          <AreaChart data={result.data} margin={{ top: 10, right: 22, left: 0, bottom: 8 }} accessibilityLayer>
             <defs><linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={lineColor} stopOpacity={0.3} /><stop offset="100%" stopColor={lineColor} stopOpacity={0.015} /></linearGradient></defs>
             <CartesianGrid strokeDasharray="3 6" stroke={light ? "#dce0d8" : "#263244"} vertical={false} />
-            <XAxis dataKey="ageHours" type="number" domain={[0, hours]} ticks={ticks} tickFormatter={relativeTime} stroke={light ? "#5b695f" : "#8190A5"} fontSize={10} tickLine={false} axisLine={false} tickMargin={12} />
+            <XAxis dataKey="ageHours" type="number" domain={[0, hours]} reversed ticks={ticks} tickFormatter={relativeTime} stroke={light ? "#5b695f" : "#8190A5"} fontSize={10} tickLine={false} axisLine={false} tickMargin={12} />
             <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} stroke={light ? "#5b695f" : "#8190A5"} fontSize={10} tickFormatter={value => `${value}%`} width={43} tickLine={false} axisLine={false} />
             <ReferenceLine y={0} stroke="#34D399" strokeOpacity={0.5} strokeDasharray="4 4" />
             <Tooltip content={<AlertTooltip />} cursor={{ stroke: "#64748B", strokeDasharray: "4 4" }} filterNull={false} />
@@ -90,5 +90,6 @@ export default function UtilizationChart({ machines, data, loading, error }) {
       ].map(([label, value, Icon, tone]) => <div key={label} className="rounded-xl border border-base-border/70 bg-base-surface/40 p-3"><div className="flex items-center justify-between gap-1 text-text-muted"><p className="text-[9px] font-semibold uppercase tracking-wide">{label}</p><Icon size={12} /></div><p className={`mt-2 font-mono text-lg font-semibold ${tone}`}>{value}</p></div>)}
     </div>
     <p className="text-[11px] leading-relaxed text-text-muted">{data ? "Demonstração. " : `${result.samples} leituras. `}Operação normal mantém a curva na base. Pausa, manutenção e desligamento não contam como alerta. Lacunas indicam ausência de dados; os tempos são somados entre as máquinas.</p>
+    {showFailureCauses && <FailureCausesChart machines={machines} hours={hours} loading={loading} demoMode={demoMode} error={error} />}
   </div>;
 }

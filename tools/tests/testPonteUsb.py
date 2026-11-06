@@ -70,7 +70,7 @@ def test_chunks_registration_database_and_frontend(api):
     cnc=devices[0]['cnc_id']
     status=client.get(f'/api/cncs/{cnc}/status').json()
     assert status['gateway_online'] is True
-    assert status['status']=='OPERANDO'
+    assert status['status']=='EMERGENCIA'
     assert status['digital_signals']==reading.payload['digital_signals']
     assert status['voltage_24v'] is None
     assert status['digital_signals']['emergencia'] is False
@@ -96,6 +96,27 @@ def test_generic_usb_event_preserves_current_and_simulation_metadata(api):
     assert event['extra_signals']['boot_id'] == gateway.session
 
 
+def test_current_file_updates_status_and_history_while_preserving_live_ihm_states(api, tmp_path):
+    adapter, client, _ = api
+    machine = client.post('/api/cncs', json={'name': 'IHM com corrente por comando'}).json()
+    path = tmp_path / 'corrente.txt'
+    gateway = Gateway(adapter, machine_id=machine['id'], current_file=path)
+    reading = reading_from(frame())
+    for sequence, amps in enumerate((12.5, 0, 18.2), 1):
+        path.write_text(str(amps), encoding='ascii')
+        current_reading = replace(reading, sequence=sequence, uptime_ms=sequence * 1000)
+        payload = gateway.payload_for(current_reading)
+        gateway.send(current_reading, payload)
+        status = client.get(f"/api/cncs/{machine['id']}/status").json()
+        assert status['analog_signals'] == {'current': amps}
+        assert status['extra_signals']['current_input']['source'] == 'simulated'
+        assert status['states'] == reading.payload['digital_signals']
+        assert status['status'] == 'EMERGENCIA'
+    history = client.get(f"/api/cncs/{machine['id']}/history").json()
+    assert [item['analog_signals']['current'] for item in history['items']] == [18.2, 0, 12.5]
+    assert all(item['states'] == reading.payload['digital_signals'] for item in history['items'])
+
+
 @pytest.mark.parametrize('amps', [0, 24.0, 18.2])
 def test_fixed_virtual_current_reaches_status_and_history_without_changing_ihm_states(api, amps):
     fixture = ROOT / '.build/firmware/ihm-usb-fixtures.txt'
@@ -104,8 +125,7 @@ def test_fixed_virtual_current_reaches_status_and_history_without_changing_ihm_s
     adapter, client, _ = api
     machine = client.post('/api/cncs', json={'name': 'IHM com corrente virtual'}).json()
     gateway = Gateway(adapter, machine_id=machine['id'], simulated_current=amps)
-    expected_statuses = ('OPERANDO', 'PARADA', 'EMERGENCIA', 'PARADA',
-                         'PARADA', 'ALARME', 'EMERGENCIA', 'EMERGENCIA')
+    expected_statuses = ('EMERGENCIA',) * 8
     wires = fixture.read_text().splitlines()
     assert len(wires) == len(expected_statuses)
     for wire, expected_status in zip(wires, expected_statuses):
@@ -284,7 +304,7 @@ def test_linux_serial_with_real_firmware_frame_reaches_api(api):
         assert saved['extra_signals']['transport'] == 'usb_serial'
         assert saved['analog_signals'] == {} and saved['voltage_24v'] is None
         cnc = client.get('/api/devices').json()[0]['cnc_id']
-        assert client.get(f'/api/cncs/{cnc}/status').json()['status'] == 'OPERANDO'
+        assert client.get(f'/api/cncs/{cnc}/status').json()['status'] == 'EMERGENCIA'
     finally:
         os.close(master)
         os.close(slave)
@@ -350,12 +370,12 @@ def test_real_ihm_pin_frames_preserve_distinct_door_and_alarm_through_machine_ap
     wires = fixture.read_text().splitlines()
     # Independent expectations from Q0.0..Q0.5 -> I1..I6, not the firmware table.
     cases = [
-        (0x01, {'ativo'}, 'OPERANDO', set(), {'ATIVIDADE_INFORMADA'}),
-        (0x02, {'inativo'}, 'PARADA', set(), {'INATIVIDADE_INFORMADA'}),
+        (0x01, {'ativo'}, 'EMERGENCIA', set(), {'ATIVIDADE_INFORMADA'}),
+        (0x02, {'inativo'}, 'EMERGENCIA', set(), {'INATIVIDADE_INFORMADA'}),
         (0x04, {'emergencia'}, 'EMERGENCIA', set(), {'EMERGENCIA_ACIONADA'}),
-        (0x08, {'motor_ligado'}, 'PARADA', set(), {'MOTOR_SEM_ATIVIDADE_CONFIRMADA'}),
-        (0x10, {'porta_aberta'}, 'PARADA', set(), {'PORTA_ABERTA'}),
-        (0x20, {'alarme'}, 'ALARME', set(), {'ALARME_ACIONADO'}),
+        (0x08, {'motor_ligado'}, 'EMERGENCIA', set(), {'MOTOR_SEM_ATIVIDADE_CONFIRMADA'}),
+        (0x10, {'porta_aberta'}, 'EMERGENCIA', set(), {'PORTA_ABERTA'}),
+        (0x20, {'alarme'}, 'EMERGENCIA', set(), {'ALARME_ACIONADO'}),
         (0x14, {'emergencia', 'porta_aberta'}, 'EMERGENCIA',
          {'PORTA_ABERTA_EMERGENCIA'}, {'PORTA_ABERTA_EMERGENCIA'}),
         (0x24, {'emergencia', 'alarme'}, 'EMERGENCIA', set(), {'EMERGENCIA_COM_ALARME'}),
@@ -389,7 +409,7 @@ def test_real_ihm_pin_frames_preserve_distinct_door_and_alarm_through_machine_ap
         assert status['states'] == states
         assert status['status'] == expected_status
         assert {item['code'] for item in status['diagnostics']} == expected_diagnostics
-        assert {item['code'] for item in status['signal_outputs']} == expected_outputs
+        assert {item['code'] for item in status['signal_outputs']} == expected_outputs | {'PARAMETROS_IHM_ACIONADOS'}
         fleet = client.get('/api/cncs/statuses').json()[0]
         for field in ('states', 'status', 'diagnostics', 'signal_outputs'):
             assert fleet[field] == status[field]

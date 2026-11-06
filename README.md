@@ -90,6 +90,8 @@ Os diagnósticos aparecem nos detalhes, cartões e alertas. Uma nova combinaçã
 
 O painel **Interações entre sinais** mostra saídas calculadas pela API em `signal_outputs`, com código, nível, título, mensagem e sinais envolvidos. Há filtros por máquina e por nível (**Informativo**, **Atenção**, **Crítico**), com seis máquinas por página e duas interpretações resumidas por cartão. Os detalhes mostram todas as saídas; cartões, alertas, histórico e modo TV também exibem interpretações.
 
+Na dashboard, o gráfico de setores **Principais causas de falhas** aparece abaixo do gráfico de alertas, com cores por parâmetro, legenda, quantidades e percentuais. Ambos usam o mesmo período de 8, 12 ou 24 horas e as máquinas do contexto selecionado. A API agrega os novos acionamentos em `failure_causes` por hora: leituras repetidas de um sinal continuamente acionado não aumentam a contagem; causas simultâneas contam separadamente. Após uma lacuna superior ao timeout, um sinal acionado inicia uma nova ocorrência observada. Os dados vêm do histórico completo do período, sem limitar a contagem às últimas leituras da dashboard.
+
 As combinações da [tabela do relatório](docs/reports/sinaisOperacionaisCorrente.md#resultado-das-interações-entre-sinais) continuam gerando saídas, assim como corrente simulada e leitura parcial. A classificação operacional segue a regra atual da IHM descrita acima; o relatório registra as interpretações anteriores. Mais de uma regra pode corresponder à mesma leitura. As saídas não modificam os sinais recebidos e não acionam relés. As consultas de status e histórico usam a mesma interpretação; o histórico é calculado a partir de cada leitura armazenada, sem copiar o estado atual.
 
 Uma alteração de sinais atualiza o painel mesmo sem mudança de status. As notificações existentes continuam ligadas a mudanças de estado e aos dois diagnósticos específicos; interpretações informativas não geram notificações a cada atualização. Em perda de comunicação, os últimos resultados são identificados como antigos.
@@ -142,6 +144,34 @@ Para usar os **sinais reais da IHM/Opta** com uma corrente virtual fixa, acresce
 `--simular-corrente` usa **24 A** como valor padrão. Para escolher outro valor, inclusive zero, use `--corrente 18.2` ou `--corrente 0` no lugar dessa opção. O valor é fixo: a troca é feita pelo argumento, sem mudança automática pelos sinais. Interrompa a ponte com `Ctrl+C` antes de iniciá-la com outro valor. Sem ambas as opções, a ponte mantém o comportamento normal de corrente ausente ou recebida.
 
 Essa opção acrescenta apenas `analog_signals.current` à mesma leitura recebida, marcada como `simulated` e `physical_enabled=false`. Os seis sinais, seu mapeamento e suas regras permanecem os recebidos do Opta; não é necessário regravar a placa para mudar o valor virtual. Uma corrente já recebida, inclusive zero e o alias `corrente`, ou um sensor declarado fisicamente habilitado têm prioridade e não são substituídos. Use somente essa ponte para a CNC em teste; um simulador separado enviaria outro snapshot sobre os sinais reais.
+
+Para **trocar somente a corrente por comando, sem reiniciar a ponte a cada troca**, inicie a ponte com `--arquivo-corrente`. Execute os comandos na raiz do projeto e use um arquivo diferente para cada máquina.
+
+Linux, no terminal da ponte:
+
+```bash
+.venv/bin/python tools/ponteUsb.py --porta /dev/ttyACM0 --machine-id CNC-001 --arquivo-corrente .local/corrente-CNC-001.txt
+```
+
+Em outro terminal, injete o valor desejado:
+
+```bash
+printf '12.5\n' > .local/corrente-CNC-001.txt
+```
+
+Windows / PowerShell, no terminal da ponte:
+
+```powershell
+& .\.venv\Scripts\python.exe tools/ponteUsb.py --porta COM4 --machine-id CNC-001 --arquivo-corrente .local/corrente-CNC-001.txt
+```
+
+Em outro terminal:
+
+```powershell
+Set-Content -Path .local/corrente-CNC-001.txt -Value '12.5' -Encoding ascii
+```
+
+A ponte cria a pasta do arquivo, lê o número a cada nova leitura USB e envia a corrente junto dos sinais reais. Use ponto decimal e um valor não negativo, inclusive `0`. A dashboard atualiza na consulta seguinte. Um arquivo ausente ou inválido mantém a última corrente válida; antes do primeiro valor válido, a corrente continua não informada, ou usa `--corrente` / `--simular-corrente` se fornecidos. Retries mantêm o valor da leitura original. Sem novas leituras USB, o comando não cria eventos nem faz a máquina parecer online.
 
 ## Setup
 

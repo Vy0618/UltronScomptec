@@ -10,6 +10,8 @@ export default function FleetHealth({ machines, demoMode, loading, error }) {
       data={demoMode ? utilizationSeries : undefined}
       loading={loading || query.loading}
       error={error || query.error}
+      showFailureCauses
+      demoMode={demoMode}
     />
   );
 }
